@@ -83,7 +83,7 @@ int write_left_file(const char *path, const char *filename, int p, int i,
 }
 
 int write_col_file(const char *path, const char *filename, int p, int i,
-                   char *buffer, size_t write_size) {
+                   char *buffer, size_t write_size, bool flag = false) {
   char output_path[PATH_MAX_LEN];
   sprintf(output_path, "./disk_%d", i);
   if (stat(output_path, &st) == -1) {
@@ -91,7 +91,11 @@ int write_col_file(const char *path, const char *filename, int p, int i,
   }
   // open file
   sprintf(output_path, "./disk_%d/%s_%d", i, filename, p);
-  int col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
+  int col_fd;
+  if (flag) {
+    col_fd = open(output_path, O_APPEND | O_WRONLY);
+  } else
+    col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
   if (col_fd < 0) {
     perror("Error: can't create file");
     return -1;
@@ -171,6 +175,8 @@ RC encode(const char *path, int p) {
   // left file, just duplicate it as: filename_left in p and p+1 disk.
   if (last_size > 0) {
     read(fd, buffers[0], last_size);
+    // disk p
+    write_col_file(path, filename, p, p - 1, buffers[0], last_size, true);
     write_left_file(path, filename, p, p, buffers[0], last_size);
     write_left_file(path, filename, p, p + 1, buffers[0], last_size);
   }
