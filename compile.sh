@@ -1,3 +1,3 @@
 #!/bin/bash
 
-gcc -o bin/evenodd evenodd.c
+g++ -o evenodd evenodd.cpp
