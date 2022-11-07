@@ -65,7 +65,7 @@ int write_left_file(const char *path, const char *filename, int p, int i,
   char output_path[PATH_MAX_LEN];
 
   // open file
-  sprintf(output_path, "./disk_%d/%s_%d.left", i, filename, p);
+  sprintf(output_path, "./disk_%d/%s.left", i, filename);
   int col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
   if (col_fd < 0) {
     perror("Error: can't create file");
@@ -90,12 +90,23 @@ int write_col_file(const char *path, const char *filename, int p, int i,
     mkdir(output_path, 0700); // mode 0700 = read,write,execute only for owner
   }
   // open file
-  sprintf(output_path, "./disk_%d/%s_%d", i, filename, p);
+  sprintf(output_path, "./disk_%d/%s", i, filename);
   int col_fd;
   if (flag) {
     col_fd = open(output_path, O_APPEND | O_WRONLY);
-  } else
+  } else {
     col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
+    char *tmp = new char[sizeof(p)];
+    memcpy(tmp, &p, sizeof(p));
+    size_t size_ = write(col_fd, tmp, sizeof(p));
+    if (size_ != sizeof(p)) {
+      perror("Error: col, write don't completely");
+      // return RC::WRITE_COMPLETE;
+      close(col_fd);
+      return -1;
+    }
+    delete[] tmp;
+  }
   if (col_fd < 0) {
     perror("Error: can't create file");
     return -1;
@@ -145,7 +156,7 @@ RC encode(const char *path, int p) {
 
   // use this diag_buffer to save diagonal parity
   char *diag_buffer = new char[p * symbol_size];
-  memccpy(diag_buffer, buffers[0], 0, buffer_size);
+  memcpy(diag_buffer, buffers[0], buffer_size);
   memset(diag_buffer + symbol_size * (p - 1), 0, symbol_size);
   int select_idx = 1;
 
@@ -193,7 +204,7 @@ RC encode(const char *path, int p) {
 /*
  * just read from 0 ~ p-1 to recover file
  */
-RC basicRead(const char *path, const char *save_as, int p) {
+RC basicRead(const char *path, const char *save_as) {
   const char *filename = basename(path);
   char output_path[PATH_MAX_LEN];
   int write_fd = open(save_as, O_CREAT | O_WRONLY, S_IRWXU);
@@ -201,22 +212,48 @@ RC basicRead(const char *path, const char *save_as, int p) {
     perror("Error:  can't create file !");
     return RC::FILE_NOT_EXIST;
   }
+  // try to read from ./disk_0/filename
+  sprintf(output_path, "./disk_%d", 0);
+  if (stat(output_path, &st) == -1) {
+    perror("Error: directory doesn't exist !");
+    return RC::FILE_NOT_EXIST;
+  }
+  sprintf(output_path, "./disk_%d/%s", 0, filename);
+  int fd = open(output_path, O_RDONLY);
+  int p = 0;
+  int read_size_ = read(fd, (void *)(&p), sizeof(p));
+  if (read_size_ != sizeof(p)) {
+    perror("can't read p!");
+    return RC::FILE_NOT_EXIST;
+  }
 
   int buffer_size = 4 * 1024 * 1024;
   char *buffer = new char[buffer_size];
+  int tmp = 0;
   for (int i = 0; i < p; i++) {
-    sprintf(output_path, "./disk_%d", i);
-    if (stat(output_path, &st) == -1) {
-      perror("Error: directory doesn't exist !");
-      return RC::FILE_NOT_EXIST;
+    if (i != 0) {
+      sprintf(output_path, "./disk_%d", i);
+      if (stat(output_path, &st) == -1) {
+        perror("Error: directory doesn't exist !");
+        return RC::FILE_NOT_EXIST;
+      }
+      sprintf(output_path, "./disk_%d/%s", i, filename);
+      fd = open(output_path, O_RDONLY);
+      if (fd < 0) {
+        perror("Error: can't open such file!");
+        return RC::FILE_NOT_EXIST;
+      }
+      int read_size_ = read(fd, (void *)(&tmp), sizeof(tmp));
+      if (read_size_ != sizeof(tmp)) {
+        perror("can't read p!");
+        return RC::FILE_NOT_EXIST;
+      }
+      if (tmp != p) {
+        printf("p: %d %d\n", tmp, p);
+        perror("Error: p saved diff!");
+        return RC::FILE_NOT_EXIST;
+      }
     }
-    sprintf(output_path, "./disk_%d/%s_%d", i, filename, p);
-    int fd = open(output_path, O_RDONLY);
-    if (fd < 0) {
-      perror("Error: can't open such file!");
-      return RC::FILE_NOT_EXIST;
-    }
-
     int read_size = 0;
     do {
       read_size = read(fd, buffer, buffer_size);
@@ -264,8 +301,7 @@ int main(int argc, char **argv) {
      */
     char *filename = argv[2];
     char *save_as = argv[3];
-    int p = atoi(argv[4]);
-    RC rc = basicRead(filename, save_as, p);
+    RC rc = basicRead(filename, save_as);
 
   } else if (strcmp(op, "repair") == 0) {
     /*
