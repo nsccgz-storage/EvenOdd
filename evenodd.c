@@ -22,6 +22,9 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
+#include "encoding.h"
+#include "decoding.h"
+
 struct stat st = {0};
 
 void usage() {
@@ -146,8 +149,6 @@ void myWrite(char* file_path, int p){
     free(row_parity);
     free(diagonal_parity);
 }
-
-void readDataColumn(char* filename, int id, int file_size, char* result);
 
 void repairDataColumn(int id, char** data, int p);
 
@@ -311,7 +312,7 @@ void myRead(char* filename, char* save_as){
                 if(i != failed_1 && i != failed_2){
                     readDataColumn(filename, i, file_size, data[i]);
                 }else{
-                    memset(data[i], 0, disk_num-2);
+                    memset(data[i], 0, disk_num-3);
                 }
             }
             // 求 S
@@ -447,14 +448,16 @@ int main(int argc, char** argv) {
         }
         char* file_path = argv[2];
         int p = atoi(argv[3]);
-        myWrite(file_path, p);
+        // myWrite(file_path, p);
+        write1(file_path, p);
         
     } else if (strcmp(op, "read") == 0) {
         if(argc < 4){
             usage();
             return -1;
         }
-        myRead(argv[2], argv[3]);
+        // myRead(argv[2], argv[3]);
+        read1(argv[2], argv[3]);
     } else if (strcmp(op, "repair") == 0) {
         if(argc < 4){
             usage();
@@ -482,15 +485,6 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-// 从 disk 目录下读取对应的数据列
-void readDataColumn(char* filename, int id, int file_size, char* result){
-    FILE* input;
-    char file_path[PATH_MAX_LEN];
-    sprintf(file_path, DISK"/disk_%d/%s_%d", id, filename, id);
-    input = fopen(file_path, "rb");
-    fread(result, file_size, 1, input);
-    fclose(input);
-}
 
 // 修复数据列
 void repairDataColumn(int id, char** data, int p){

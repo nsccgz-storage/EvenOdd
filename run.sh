@@ -8,13 +8,16 @@ rm data/test*
 ./bin/evenodd read temp data/testread_0
 
 # ## test one file failed
-# mv disk/disk_2/temp_2 data/
-# ./bin/evenodd read temp data/testread_11
+echo "============================"
+mv disk/disk_2/temp data/temp_2
+./bin/evenodd read temp data/testread_11
 
-# mv data/temp_2 disk/disk_2/
-# mv disk/disk_6/temp_6 data/
-# ./bin/evenodd read temp data/testread_12
+echo "============================"
+mv data/temp_2 disk/disk_2/temp
+mv disk/disk_6/temp data/temp_6
+./bin/evenodd read temp data/testread_12
 
+rm data/temp_6
 ## test two files failed
 ### case 1:
 echo "============================"
