@@ -236,7 +236,7 @@ void myRead(char* filename, char* save_as){
             exit(1);
         }
 
-        if(failed_1 == disk_num - 1 || failed_1 == disk_num - 1){ // diagonal_parity or row_parity
+        if(failed_1 == disk_num - 2 || failed_1 == disk_num - 1){ // diagonal_parity or row_parity
             printf("disk_%d failed, read directly\n", failed_1);
 
             char* buffer = (char*)malloc(file_size);
@@ -412,6 +412,26 @@ void myRead(char* filename, char* save_as){
     }
 }
 
+/*
+ * Please repair failed disks. The number of failures is specified by
+ * "num_erasures", and the index of disks are provided in the command
+ * line parameters.
+ * For example: Suppose "number_erasures" is 2, and the indices of
+ * failed disks are "0" and "1". After the repair operation, the data
+ * splits in folder "disk_0" and "disk_1" should be repaired.
+ */
+void myRepair(int num, int* indices){
+    if(num > 2){
+        printf("Too many corruptions!\n");
+        exit(-1);
+    }
+    if(num == 1){
+
+    }else if(num == 2){
+        
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         usage();
@@ -436,14 +456,26 @@ int main(int argc, char** argv) {
         }
         myRead(argv[2], argv[3]);
     } else if (strcmp(op, "repair") == 0) {
-        /*
-         * Please repair failed disks. The number of failures is specified by
-         * "num_erasures", and the index of disks are provided in the command
-         * line parameters.
-         * For example: Suppose "number_erasures" is 2, and the indices of
-         * failed disks are "0" and "1". After the repair operation, the data
-         * splits in folder "disk_0" and "disk_1" should be repaired.
-         */
+        if(argc < 4){
+            usage();
+            return -1;
+        }
+        int erasures_num = atoi(argv[2]);
+        if(argc - 3 != erasures_num){
+            printf("require %d disk, but get %d\n", erasures_num, argc - 3);
+            usage();
+            return -1;
+        }
+        int* indices = (int*)malloc(sizeof(int) * erasures_num);
+        printf("num erasures: %d, ", erasures_num);
+        for(int i = 0;i < erasures_num;i++){
+            indices[i] = atoi(argv[i + 3]);
+            printf("disk %d, ", indices[i]);
+        }
+        printf("\n");
+        
+        myRepair(erasures_num, indices);
+        free(indices);
     } else {
         printf("Non-supported operations!\n");
     }
