@@ -267,6 +267,7 @@ RC basicRead(const char *path, const char *save_as) {
     close(fd);
   }
   close(write_fd);
+  delete[] buffer;
   return RC::SUCCESS;
 }
 
