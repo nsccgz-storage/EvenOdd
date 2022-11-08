@@ -96,16 +96,13 @@ int write_col_file(const char *path, const char *filename, int p, int i,
     col_fd = open(output_path, O_APPEND | O_WRONLY);
   } else {
     col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
-    char *tmp = new char[sizeof(p)];
-    memcpy(tmp, &p, sizeof(p));
-    size_t size_ = write(col_fd, tmp, sizeof(p));
+    size_t size_ = write(col_fd, (void *)(&p), sizeof(p));
     if (size_ != sizeof(p)) {
       perror("Error: col, write don't completely");
       // return RC::WRITE_COMPLETE;
       close(col_fd);
       return -1;
     }
-    delete[] tmp;
   }
   if (col_fd < 0) {
     perror("Error: can't create file");
@@ -132,13 +129,14 @@ RC encode(const char *path, int p) {
 
   // file size in bytes
   size_t file_size = stat_.st_size;
-
   size_t symbol_size = file_size / ((p - 1) * (p));
+
   // last symbol left, this will add to the tail of row parity directory
   size_t last_size = file_size - symbol_size * (p - 1) * p;
-  // TODO: if buffer_size > 4UL * 1024 * 1024 * 1024 Bytes
 
+  // TODO: if buffer_size > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
+
   // TODO: search a the smallest buffer_size_ % 4K == 0 and >= buffer_size_
   size_t buffer_size = buffer_size_;
 
