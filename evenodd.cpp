@@ -3,19 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#define PATH_MAX_LEN 512
-
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)                                                   \
-  (byte & 0x80 ? '1' : '0'), (byte & 0x40 ? '1' : '0'),                        \
-      (byte & 0x20 ? '1' : '0'), (byte & 0x10 ? '1' : '0'),                    \
-      (byte & 0x08 ? '1' : '0'), (byte & 0x04 ? '1' : '0'),                    \
-      (byte & 0x02 ? '1' : '0'), (byte & 0x01 ? '1' : '0')
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#define PATH_MAX_LEN 512
 enum RC {
   SUCCESS = 1,
   FILE_NOT_EXIST,
@@ -30,15 +23,6 @@ void usage() {
   printf("./evenodd read <file_name> <save_as>\n");
   printf("./evenodd repair <number_erasures> <idx0> ...\n");
 }
-
-/*
- * Please encode the input file with EVENODD code
- * and store the erasure-coded splits into corresponding disks
- * For example: Suppose "file_name" is "testfile", and "p" is 5. After your
- * encoding logic, there should be 7 splits, "testfile_0", "testfile_1",
- * ..., "testfile_6", stored in 7 diffrent disk folders from "disk_0" to
- * "disk_6".
- */
 
 /*
  * caculte the xor value and save to lhs
@@ -60,12 +44,12 @@ void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
   }
 }
 
-int write_left_file(const char *path, const char *filename, int p, int i,
-                    char *buffer, size_t last_size) {
+int write_remaining_file(const char *path, const char *filename, int p, int i,
+                         char *buffer, size_t last_size) {
   char output_path[PATH_MAX_LEN];
 
   // open file
-  sprintf(output_path, "./disk_%d/%s.left", i, filename);
+  sprintf(output_path, "./disk_%d/%s.remaining", i, filename);
   int col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
   if (col_fd < 0) {
     perror("Error: can't create file");
@@ -73,7 +57,7 @@ int write_left_file(const char *path, const char *filename, int p, int i,
   }
   size_t size = write(col_fd, buffer, last_size);
   if (size != last_size) {
-    perror("Error: left, write don't completely");
+    perror("Error: remaining, write don't completely");
     // return RC::WRITE_COMPLETE;
     close(col_fd);
     return -1;
@@ -119,6 +103,14 @@ int write_col_file(const char *path, const char *filename, int p, int i,
   return col_fd;
 }
 
+/*
+ * Please encode the input file with EVENODD code
+ * and store the erasure-coded splits into corresponding disks
+ * For example: Suppose "file_name" is "testfile", and "p" is 5. After your
+ * encoding logic, there should be 7 splits, "testfile_0", "testfile_1",
+ * ..., "testfile_6", stored in 7 diffrent disk folders from "disk_0" to
+ * "disk_6".
+ */
 RC encode(const char *path, int p) {
   size_t fd = open(path, O_RDONLY);
   if (fd < 0) {
@@ -131,13 +123,13 @@ RC encode(const char *path, int p) {
   size_t file_size = stat_.st_size;
   size_t symbol_size = file_size / ((p - 1) * (p));
 
-  // last symbol left, this will add to the tail of row parity directory
+  // last symbol remaning, this will add to the tail of row parity directory
   size_t last_size = file_size - symbol_size * (p - 1) * p;
 
   // TODO: if buffer_size > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
 
-  // TODO: search a the smallest buffer_size_ % 4K == 0 and >= buffer_size_
+  // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   size_t buffer_size = buffer_size_;
 
   // use this buffer to save row parity
@@ -181,13 +173,13 @@ RC encode(const char *path, int p) {
   }
   col_fd = write_col_file(path, filename, p, p + 1, diag_buffer, buffer_size);
 
-  // left file, just duplicate it as: filename_left in p and p+1 disk.
+  // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
     read(fd, buffers[0], last_size);
     // disk p
     write_col_file(path, filename, p, p - 1, buffers[0], last_size, true);
-    write_left_file(path, filename, p, p, buffers[0], last_size);
-    write_left_file(path, filename, p, p + 1, buffers[0], last_size);
+    write_remaining_file(path, filename, p, p, buffers[0], last_size);
+    write_remaining_file(path, filename, p, p + 1, buffers[0], last_size);
   }
   close(fd);
   for (int i = 0; i < 2; i++) {
@@ -271,6 +263,8 @@ RC basicRead(const char *path, const char *save_as) {
   return RC::SUCCESS;
 }
 
+RC repair() {}
+
 int main(int argc, char **argv) {
   if (argc < 2) {
     usage();
@@ -286,8 +280,6 @@ int main(int argc, char **argv) {
     }
     char *file_path = argv[2];
     int p = atoi(argv[3]);
-    // myWrite(file_path, p);
-    // 按列划分下来。
     RC error_code = encode(file_path, p);
 
   } else if (strcmp(op, "read") == 0) {
