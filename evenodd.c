@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DISK "./disk"
 #define PATH_MAX_LEN 60
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
@@ -116,13 +115,13 @@ void myWrite(char* file_path, int p){
     size_t write_count = 0;
     for(int i = 0;i < p+2;i++){
         // create directory if not exist
-        sprintf(output_path, DISK"/disk_%d", i);
+        sprintf(output_path, "./disk_%d", i);
         if(stat(output_path, &st) == -1){
             mkdir(output_path, 0700); // mode 0700 = read,write,execute only for owner
         }
 
         // open file
-        sprintf(output_path, DISK"/disk_%d/%s_%d",i, filename, i); 
+        sprintf(output_path, "./disk_%d/%s_%d",i, filename, i); 
         output = fopen(output_path, "wb");
         if(!output){
             perror("Error in creating file");
@@ -166,7 +165,7 @@ void myRead(char* filename, char* save_as){
     // TODO: 如何确定 p,目前考虑通过 (disk_x 文件夹个数 - 2) 来确定
 
     // check disk
-    DIR* d = opendir(DISK);
+    DIR* d = opendir(".");
     if(!d){
         perror("Error in myRead");
         exit(1);
@@ -182,7 +181,7 @@ void myRead(char* filename, char* save_as){
         if(dir->d_name[0] == '.')continue;
         disk_num++;
         sscanf(dir->d_name, "disk_%d", &id);
-        sprintf(file_path, DISK"/disk_%d/%s_%d", id, filename, id);
+        sprintf(file_path, "./disk_%d/%s_%d", id, filename, id);
 
         // printf("id = %d, file path = %s\n", id, file_path);
         if(stat(file_path, &st) != 0){

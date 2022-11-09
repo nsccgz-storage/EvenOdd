@@ -12,7 +12,6 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-#define DISK "./disk"
 #define PATH_MAX_LEN 60
 
 int BLOCK_SIZE; 
@@ -131,13 +130,13 @@ void write1(char* file_path, int p){
         write_count = 0;
 
         // create directory if not exist
-        sprintf(output_path, DISK"/disk_%d", i);
+        sprintf(output_path, "./disk_%d", i);
         if(stat(output_path, &st) == -1){
             mkdir(output_path, 0700); // mode 0700 = read,write,execute only for owner
         }
 
         // open file
-        sprintf(output_path, DISK"/disk_%d/%s",i, filename); 
+        sprintf(output_path, "./disk_%d/%s",i, filename); 
         output = fopen(output_path, "wb");
         if(!output){
             perror("Error in creating file");

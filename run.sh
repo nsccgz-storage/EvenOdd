@@ -1,54 +1,63 @@
 #!/bin/bash
+rm -rf test
+mkdir test
+cd test
+mkdir result
 
-rm -r bin/*
-gcc -o bin/evenodd evenodd.c
-./bin/evenodd write data/temp 5
+INPUT='temp'
 
-rm data/test*
-./bin/evenodd read temp data/testread_0
+rm -r ../bin/*
+gcc -o ../bin/evenodd ../evenodd.c
+../bin/evenodd write ../data/$INPUT 5
 
-# ## test one file failed
+## test reading 
+../bin/evenodd read $INPUT result/testread_0
+
+## test one file failed
 echo "============================"
-mv disk/disk_2/temp data/temp_2
-./bin/evenodd read temp data/testread_11
+mv disk_3/$INPUT disk_3/deleted_file
+../bin/evenodd read $INPUT result/testread_11
 
 echo "============================"
-mv data/temp_2 disk/disk_2/temp
-mv disk/disk_6/temp data/temp_6
-./bin/evenodd read temp data/testread_12
+mv disk_3/deleted_file disk_3/$INPUT
+mv disk_6/$INPUT disk_6/deleted_file
+../bin/evenodd read $INPUT result/testread_12
+mv disk_6/deleted_file disk_6/$INPUT
 
-rm data/temp_6
 ## test two files failed
 ### case 1:
 echo "============================"
-./bin/evenodd write data/temp 5
-rm disk/disk_[5,6]/*
+../bin/evenodd write ../data/$INPUT 5
+rm disk_[5,6]/*
 
-./bin/evenodd read temp data/testread_21
+../bin/evenodd read $INPUT result/testread_21
 
 ### case 2:
 echo "============================"
-./bin/evenodd write data/temp 5
-rm disk/disk_[3,6]/*
+../bin/evenodd write ../data/$INPUT 5
+rm disk_[3,6]/*
 
-./bin/evenodd read temp data/testread_22
+../bin/evenodd read $INPUT result/testread_22
 
 ### case 3:
 echo "============================"
-./bin/evenodd write data/temp 5
-rm disk/disk_[4,5]/*
+../bin/evenodd write ../data/$INPUT 5
+rm disk_[4,5]/*
 
-./bin/evenodd read temp data/testread_23
+../bin/evenodd read $INPUT result/testread_23
 
 ### case 4:
 echo "============================"
-./bin/evenodd write data/temp 5
-rm disk/disk_[0,2]/*
+../bin/evenodd write ../data/$INPUT 5
+rm disk_[0,2]/*
 
-./bin/evenodd read temp data/testread_24
+../bin/evenodd read $INPUT result/testread_24
 
 ## test more disks failed
 echo "============================"
-./bin/evenodd write data/temp 5
-rm disk/disk_[0-2]/*
-./bin/evenodd read temp data/testread_3
+../bin/evenodd write ../data/$INPUT 5
+rm disk_[0-2]/*
+../bin/evenodd read $INPUT result/testread_3
+
+
+

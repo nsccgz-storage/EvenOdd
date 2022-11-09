@@ -14,7 +14,7 @@ static unsigned int block_size;
 void readDataColumn(char* filename, int id, int file_size, char* result){
     FILE* input;
     char file_path[PATH_MAX_LEN];
-    sprintf(file_path, DISK"/disk_%d/%s", id, filename);
+    sprintf(file_path, "disk_%d/%s", id, filename);
     input = fopen(file_path, "rb");
     fseek(input, sizeof(int), SEEK_SET);
     fread(result, file_size, 1, input);
@@ -47,14 +47,21 @@ void printColumn(char* data, int p){
     printf("\n");
 }
 
-
+int startWithDisk(char* str, int len){
+    if(len <= 5)return 0; // false
+    const char* pattern = "disk_";
+    for(int i = 0;i < 5;i++){
+        if(str[i] != pattern[i])return 0;
+    }
+    return 1; // true
+}
 /* 
  * 先实现 malloc 版本
  * 之后再实现 手动管理内存缓冲区版本
  */
 void read1(char* filename, char* save_as){
     // 确定 p
-    DIR* d = opendir(DISK);
+    DIR* d = opendir(".");
     if(!d){
         perror("Error in myRead");
         exit(1);
@@ -70,10 +77,11 @@ void read1(char* filename, char* save_as){
 
     while( (dir=readdir(d)) != NULL){
         if(dir->d_name[0] == '.')continue;
+        if(!startWithDisk(dir->d_name, dir->d_reclen))continue;
 
         int disk_id;
         sscanf(dir->d_name, "disk_%d", &disk_id);
-        sprintf(file_path, DISK"/disk_%d/%s", disk_id, filename);
+        sprintf(file_path, "disk_%d/%s", disk_id, filename);
 
         // could not find the file
         if(stat(file_path, &st) != 0){
