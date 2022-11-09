@@ -126,7 +126,7 @@ RC encode(const char *path, int p) {
   // last symbol remaining, this will add to the tail of row parity directory
   size_t last_size = file_size - symbol_size * (p - 1) * p;
 
-  // TODO: if buffer_size > 4UL * 1024 * 1024 * 1024 Bytes
+  // TODO: if buffer_size_ > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
 
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
@@ -153,7 +153,7 @@ RC encode(const char *path, int p) {
   for (int i = 1; i < p; i++) {
     int read_size = read(fd, buffers[select_idx], buffer_size);
     file_offset += read_size;
-    // create part file and write date
+    // create col file and write data
     int col_fd =
         write_col_file(path, filename, p, i, buffers[select_idx], buffer_size);
     // save middle result
@@ -175,7 +175,7 @@ RC encode(const char *path, int p) {
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
     read(fd, buffers[0], last_size);
-    // write remaining file to the tail of file in disk p
+    // write remaining file to the tail of file in disk p-1
     write_col_file(path, filename, p, p - 1, buffers[0], last_size, true);
 
     write_remaining_file(path, filename, p, p, buffers[0], last_size);
