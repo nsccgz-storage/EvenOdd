@@ -123,7 +123,7 @@ RC encode(const char *path, int p) {
   size_t file_size = stat_.st_size;
   size_t symbol_size = file_size / ((p - 1) * (p));
 
-  // last symbol remaning, this will add to the tail of row parity directory
+  // last symbol remaining, this will add to the tail of row parity directory
   size_t last_size = file_size - symbol_size * (p - 1) * p;
 
   // TODO: if buffer_size > 4UL * 1024 * 1024 * 1024 Bytes
@@ -166,7 +166,6 @@ RC encode(const char *path, int p) {
   col_fd =
       write_col_file(path, filename, p, p, buffers[select_idx], buffer_size);
   // write diag parity file
-
   for (int i = 0; i < p - 1; i++) {
     symbolXor(diag_buffer + i * symbol_size,
               diag_buffer + (p - 1) * symbol_size, symbol_size);
@@ -176,8 +175,9 @@ RC encode(const char *path, int p) {
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
     read(fd, buffers[0], last_size);
-    // disk p
+    // write remaining file to the tail of file in disk p
     write_col_file(path, filename, p, p - 1, buffers[0], last_size, true);
+
     write_remaining_file(path, filename, p, p, buffers[0], last_size);
     write_remaining_file(path, filename, p, p + 1, buffers[0], last_size);
   }
@@ -187,7 +187,7 @@ RC encode(const char *path, int p) {
   }
   delete[] diag_buffer;
 
-  // fsync all col files
+  // TODO: fsync all col files
   return RC::SUCCESS;
 }
 
