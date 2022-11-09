@@ -263,8 +263,6 @@ RC basicRead(const char *path, const char *save_as) {
   return RC::SUCCESS;
 }
 
-RC repair() {}
-
 int main(int argc, char **argv) {
   if (argc < 2) {
     usage();
