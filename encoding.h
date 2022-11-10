@@ -176,11 +176,11 @@ void write1(char* file_path, int p){
                     exit(1);
                 }
                 size_t write_remain_size = fwrite(remain, 1, remain_size, remain_ptr);
-                printf("write %ld byte to remaining file in disk_%d\n", write_remain_size, i); 
+                // printf("write %ld byte to remaining file in disk_%d\n", write_remain_size, i); 
             }
         }
 
-        printf("write %ld byte to disk_%d\n", write_count, i); 
+        // printf("write %ld byte to disk_%d\n", write_count, i); 
     }
     
     

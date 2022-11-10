@@ -7,12 +7,11 @@ mkdir result
 INPUT='lsmtree.pdf'
 
 rm -r ../bin/*
-# gcc -o ../bin/evenodd ../evenodd.c
+gcc -o ../bin/evenodd ../evenodd.c
 g++ -o ../bin/evenoddcpp ../evenodd.cpp
 # ../bin/evenodd write ../data/$INPUT 5
 ../bin/evenoddcpp write ../data/$INPUT 5
 
-gcc -o ../bin/evenodd ../evenodd.c
 ## test reading 
 ../bin/evenodd read $INPUT result/testread_0
 diff ../data/$INPUT result/testread_0
