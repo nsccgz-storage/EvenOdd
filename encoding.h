@@ -14,7 +14,7 @@
 
 #define PATH_MAX_LEN 60
 
-int BLOCK_SIZE; 
+long BLOCK_SIZE; 
 void block_xor_1(char* left, char* right, char* result){
     for(int i = 0;i < BLOCK_SIZE;i++){
         result[i] = left[i] ^ right[i];
@@ -47,11 +47,12 @@ void write1(char* file_path, int p){
     fseek(fptr, 0, SEEK_SET);
     
     int block_num = p * (p-1);
-    if(file_size % block_num != 0){
-        // TODO: padding
-    }
+    size_t remain_size = file_size % block_num;
 
-    BLOCK_SIZE = file_size % block_num ? file_size / block_num + 1 : file_size / block_num;
+    BLOCK_SIZE = (file_size - remain_size) / block_num;
+    printf("[info]{%s}: total size = %ld, block size = %ld, remain size = %ld\n", __func__, file_size, BLOCK_SIZE, remain_size);
+
+    // BLOCK_SIZE = file_size % block_num ? file_size / block_num + 1 : file_size / block_num;
 
     /* init */
     char** data = (char**)malloc(sizeof(char*) * p);
@@ -60,11 +61,17 @@ void write1(char* file_path, int p){
         memset(data[i], 0, (p-1)*BLOCK_SIZE);
     }
     char* row_parity = (char*)malloc((p-1)*BLOCK_SIZE);
-    char* diagonal_parity = (char*)malloc((p-1)*BLOCK_SIZE);
+    char* diagonal_parity = (char*)malloc((p-1)*BLOCK_SIZE);\
+
+    char* remain = NULL;
 
     int num = 0;
     while(num < p && fread(data[num], BLOCK_SIZE, p-1, fptr)){
         num++;
+    }
+    if(remain_size > 0){
+        remain = (char*)malloc(remain_size);
+        fread(remain, remain_size, 1, fptr);
     }
     fclose(fptr);
 
@@ -153,10 +160,27 @@ void write1(char* file_path, int p){
         }else{
             ptr = diagonal_parity;
         }
-        write_count += fwrite(ptr, BLOCK_SIZE, p-1, output);
+        write_count += fwrite(ptr, 1, BLOCK_SIZE*(p-1), output);
+        if(i == p-1 && remain_size > 0){
+           write_count += fwrite(remain, 1, remain_size, output);
+        }
+
         fclose(output);
 
-        // printf("Totally write %ld elements to disk_%d\n", write_count, i); // 应该为 4 + 64 byte
+        if(remain_size > 0){
+            if(i == p || i == p+1){
+                sprintf(output_path, "./disk_%d/%s.remaining",i, filename); 
+                FILE* remain_ptr = fopen(output_path, "wb");
+                if(!output){
+                    perror("Error in creating remain file");
+                    exit(1);
+                }
+                size_t write_remain_size = fwrite(remain, 1, remain_size, remain_ptr);
+                printf("write %ld byte to remaining file in disk_%d\n", write_remain_size, i); 
+            }
+        }
+
+        printf("write %ld byte to disk_%d\n", write_count, i); 
     }
     
     

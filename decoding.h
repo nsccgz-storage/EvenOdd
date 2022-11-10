@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-static unsigned int block_size;
+static unsigned long block_size;
 
 // 从 disk 目录下读取对应的数据列
 void readDataColumn(char* filename, int id, int file_size, char* result){
@@ -18,6 +18,27 @@ void readDataColumn(char* filename, int id, int file_size, char* result){
     input = fopen(file_path, "rb");
     fseek(input, sizeof(int), SEEK_SET);
     fread(result, file_size, 1, input);
+    fclose(input);
+}
+
+void readRemain(char* filename, int id, int p, int remain_size, char* result){
+    FILE* input;
+    char file_path[PATH_MAX_LEN];
+    if(id == p-1){
+        sprintf(file_path, "disk_%d/%s", id, filename);
+        input = fopen(file_path, "rb");
+        fseek(input, -remain_size, SEEK_END); // 倒数 remain_size
+        fread(result, remain_size, 1, input);
+    }
+    else if(id == p || id == p+1){
+        size_t file_size;
+        sprintf(file_path, "disk_%d/%s.remaining", id, filename);
+        input = fopen(file_path, "rb");
+        fread(result, remain_size, 1, input);
+    }
+    else{
+        printf("[Error] invalidly reading of remain block");
+    }
     fclose(input);
 }
 
@@ -60,56 +81,61 @@ int startWithDisk(char* str, int len){
  * 之后再实现 手动管理内存缓冲区版本
  */
 void read1(char* filename, char* save_as){
-    // 确定 p
-    DIR* d = opendir(".");
-    if(!d){
-        perror("Error in myRead");
-        exit(1);
-    }
-
-    struct dirent *dir;
     struct stat st = {0};
-    unsigned int file_size = 0;
+    unsigned long file_size = 0;
+    unsigned long remain_size = 0; // the remain file size when source file size can not divide by p*(p-1)
     int p = 0;
     int failed_num = 0; 
     int failed[2];
     char file_path[PATH_MAX_LEN];
+    char dir_path[PATH_MAX_LEN];
 
-    while( (dir=readdir(d)) != NULL){
-        if(dir->d_name[0] == '.')continue;
-        if(!startWithDisk(dir->d_name, dir->d_reclen))continue;
+    int disk_id = 0;
+    while(p == 0 || disk_id <= p+1){
+        sprintf(dir_path, "disk_%d", disk_id);
+        if(stat(dir_path, &st) == 0 && S_ISDIR(st.st_mode)){ // directory exist
+            sprintf(file_path, "disk_%d/%s", disk_id, filename);
+            
+            if(stat(file_path, &st) != 0){ // file not exist
+                failed_num++;
 
-        int disk_id;
-        sscanf(dir->d_name, "disk_%d", &disk_id);
-        sprintf(file_path, "disk_%d/%s", disk_id, filename);
+                if(failed_num == 1){
+                    failed[0] = disk_id;
+                }else if(failed_num == 2){
+                    failed[1] = disk_id;
+                }else{
+                    break;
+                }   
+            }
+            else{
+                if(p == 0){ // file exist but p is unknown 
+                    FILE* file;
+                    file = fopen(file_path, "rb");
+                    fread(&p, sizeof(int), 1, file);
+                    fclose(file);
+                }
 
-        // could not find the file
-        if(stat(file_path, &st) != 0){
+                if(disk_id == p-1){
+                    remain_size = st.st_size; 
+                }
+                else { // disk_id != p-1
+                    file_size = st.st_size;
+                }
+            } 
+        }else{ // directory not exist
             failed_num++;
 
             if(failed_num == 1){
                 failed[0] = disk_id;
             }else if(failed_num == 2){
-                // ensure failed[0] < failed[1]
-                if(disk_id < failed[0]){
-                    failed[1] = failed[0];
-                    failed[0] = disk_id;
-                }
-                else failed[1] = disk_id;
-            }
+                failed[1] = disk_id;
+            }else{
+                break;
+            }  
         }
-        else if(p == 0){ // determine the p value
-            file_size = st.st_size - sizeof(int); // 确定每个文件的大小
-            FILE* file;
-            file = fopen(file_path, "rb");
-            fread(&p, sizeof(int), 1, file);
-            fclose(file);
-
-            printf("[Debug]: p = %d, file size = %d\n", p, file_size);
-        }
+        disk_id++;
     }
-    closedir(d);
-
+    
     if(p == 0){
         printf("File does not exist!\n");
         exit(1);
@@ -120,11 +146,39 @@ void read1(char* filename, char* save_as){
         exit(1);
     }
 
+    // 计算 remain_size 真实值
+    if(remain_size != 0){  // disk_{p-1} is not failed
+        remain_size = remain_size - file_size;
+    }
+    else{ // when disk_{p-1} is failed...
+        // try reading disk_{p}/<filename>.remaining
+        sprintf(file_path, "disk_%d/%s.remaining", p, filename);
+        FILE* f = fopen(file_path, "rb");
+        size_t size = 0;
+        if(f){  
+            fseek(f, 0, SEEK_END);
+            remain_size = ftell(f);          
+            fclose(f);
+        }else{
+            perror("remaining file in disk_p is not exist");
+
+            sprintf(file_path, "disk_%d/%s.remaining", p+1, filename);
+            f = fopen(file_path, "rb");
+            if(f){
+                fseek(f, 0, SEEK_END);
+                remain_size = ftell(f);                             
+                fclose(f);
+            }
+            // else remain size = 0
+        }
+    }
+    file_size -= sizeof(int);
     /* start decoding */
-    // assert file_size % (p-1) == 0
     block_size = file_size / (p-1);
+    printf("[Info]{%s}: file size = %ld, remain size = %ld, block size = %ld\n", __func__, file_size, remain_size, block_size);
 
     if(failed_num == 0){
+        printf("read directly\n");
         FILE* output = fopen(save_as, "wb");
         if(!output){
             perror("Error in writing file");
@@ -135,6 +189,10 @@ void read1(char* filename, char* save_as){
         for(int i = 0;i < p;i++){ 
             readDataColumn(filename, i, file_size, buffer);
             fwrite(buffer, file_size, 1, output);
+        }
+        if(remain_size > 0){
+            readRemain(filename, p-1, p, remain_size, buffer);
+            fwrite(buffer, remain_size, 1, output);
         }
         fclose(output);
         free(buffer);
@@ -153,6 +211,10 @@ void read1(char* filename, char* save_as){
             for(int i = 0;i < p;i++){ 
                 readDataColumn(filename, i, file_size, buffer);
                 fwrite(buffer, file_size, 1, output);
+            }
+            if(remain_size > 0){
+                readRemain(filename, p-1, p, remain_size, buffer);
+                fwrite(buffer, remain_size, 1, output);
             }
             free(buffer);
         }else{ // repair some data column
@@ -175,7 +237,10 @@ void read1(char* filename, char* save_as){
             for(int i = 0;i < p;i++){ 
                 fwrite(buffer+file_size*i, file_size, 1, output);
             }
-
+            if(remain_size > 0){
+                readRemain(filename, p, p, remain_size, buffer);
+                fwrite(buffer, 1, remain_size, output);                
+            }
             free(buffer);
         }
         fclose(output);
@@ -197,16 +262,23 @@ void read1(char* filename, char* save_as){
                     readDataColumn(filename, i, file_size, buffer);
                     fwrite(buffer, file_size, 1, output);
                 }
+                if(remain_size > 0){
+                    readRemain(filename, p-1, p, remain_size, buffer);
+                    fwrite(buffer, remain_size, 1, output);
+                }
                 free(buffer);
             }
             else{ // case 2: diagonal_parity and data column
                 printf("case 2: disk_%d and disk_%d failed, repair a data column and read\n", failed[0], failed[1]);
                 // TODO: the limit of buffer size
-                char* buffer = (char*)malloc(file_size * (p+1));
+                char* buffer = (char*)malloc(file_size * p);
                 char* missed_column = buffer + file_size * failed[0];
+                char* row_parity = (char*)malloc(file_size);
+                readDataColumn(filename, p, file_size, row_parity);
+
                 memset(missed_column, 0, file_size);
 
-                for(int i = 0;i < p+1;i++){
+                for(int i = 0;i < p;i++){
                     if(i != failed[0]){
                         char* current = buffer+file_size*i;
                         readDataColumn(filename, i, file_size, current);
@@ -216,11 +288,16 @@ void read1(char* filename, char* save_as){
                         }
                     }
                 }
-
+                for(int j = 0;j < p-1;j++){
+                    block_xoreq(missed_column+j*block_size, row_parity+j*block_size);
+                }
                 for(int i = 0;i < p;i++){ 
                     fwrite(buffer+file_size*i, file_size, 1, output);
                 }
-
+                if(remain_size > 0){
+                    readRemain(filename, p, p, remain_size, buffer);
+                    fwrite(buffer, remain_size, 1, output);
+                }
                 free(buffer);
             }
         }else if(failed[1] == p){ // case 3: row parity and data column
@@ -266,7 +343,11 @@ void read1(char* filename, char* save_as){
             for(int i = 0;i < p;i++){ 
                 fwrite(buffer+file_size*i, file_size, 1, output);
             }
-            
+
+            if(remain_size > 0){
+                readRemain(filename, p+1, p, remain_size, buffer);
+                fwrite(buffer, remain_size, 1, output);
+            }
             // free space
             free(S);
             free(buffer);
@@ -347,7 +428,10 @@ void read1(char* filename, char* save_as){
             for(int i = 0;i < p;i++){ 
                 fwrite(buffer+file_size*i, file_size, 1, output);
             }
-
+            if(remain_size > 0){
+                readRemain(filename, p+1, p, remain_size, buffer);
+                fwrite(buffer, remain_size, 1, output);
+            }
             // free space
             free(buffer);
             free(row_parity);
