@@ -6,7 +6,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <dirent.h>
 
 static unsigned long block_size;
 
@@ -84,29 +83,6 @@ void xoreq_diagparity(char* left, char* diag, int left_id, int p){
     xoreq_diag(left, diag, left_id, 0, p);
 }
 
-void printBlock(char* data){
-    for(int i = 0;i < block_size;i++){
-        printf(BYTE_TO_BINARY_PATTERN",", BYTE_TO_BINARY(data[i]));
-    }
-    printf("\n");
-}
-
-void printColumn(char* data, int p){
-    for(int i = 0;i < (p-1)*block_size;i++){
-        if(i % block_size == 0)printf("\n");
-        printf(BYTE_TO_BINARY_PATTERN",", BYTE_TO_BINARY(data[i]));
-    }
-    printf("\n");
-}
-
-int startWithDisk(char* str, int len){
-    if(len <= 5)return 0; // false
-    const char* pattern = "disk_";
-    for(int i = 0;i < 5;i++){
-        if(str[i] != pattern[i])return 0;
-    }
-    return 1; // true
-}
 /* 
  * 暂时假设每个 column 可以直接读入内存
  */

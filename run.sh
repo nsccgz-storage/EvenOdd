@@ -7,10 +7,8 @@ mkdir result
 INPUT='lsmtree.pdf'
 
 rm -r ../bin/*
-gcc -o ../bin/evenodd ../evenodd.c
-g++ -o ../bin/evenoddcpp ../evenodd.cpp
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+g++ -o ../bin/evenodd ../evenodd.cpp
+../bin/evenodd write ../data/$INPUT 5
 
 ## test reading 
 ../bin/evenodd read $INPUT result/testread_0
@@ -33,8 +31,7 @@ diff ../data/$INPUT result/testread_12
 ### case 1:
 echo "============================"
 rm -rf disk_*
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+../bin/evenodd write ../data/$INPUT 5
 rm disk_[5,6]/*
 ../bin/evenodd read $INPUT result/testread_21
 diff ../data/$INPUT result/testread_21
@@ -42,8 +39,7 @@ diff ../data/$INPUT result/testread_21
 ### case 2:
 echo "============================"
 rm -rf disk_*
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+../bin/evenodd write ../data/$INPUT 5
 rm disk_[3,6]/*
 
 ../bin/evenodd read $INPUT result/testread_22
@@ -52,8 +48,7 @@ diff ../data/$INPUT result/testread_22
 ### case 3:
 echo "============================"
 rm -rf disk_*
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+../bin/evenodd write ../data/$INPUT 5
 rm disk_[4,5]/*
 
 ../bin/evenodd read $INPUT result/testread_23
@@ -62,8 +57,7 @@ diff ../data/$INPUT result/testread_23
 ### case 4:
 echo "============================"
 rm -rf disk_*
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+../bin/evenodd write ../data/$INPUT 5
 rm -r disk_[0,2]
 
 ../bin/evenodd read $INPUT result/testread_24
@@ -72,8 +66,7 @@ diff ../data/$INPUT result/testread_24
 ## test more disks failed
 echo "============================"
 rm -rf disk_*
-# ../bin/evenodd write ../data/$INPUT 5
-../bin/evenoddcpp write ../data/$INPUT 5
+../bin/evenodd write ../data/$INPUT 5
 rm disk_[0-2]/*
 ../bin/evenodd read $INPUT result/testread_3
 
