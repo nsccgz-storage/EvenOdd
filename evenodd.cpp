@@ -37,6 +37,13 @@ void symbolXor(char *lhs, const char *rhs, size_t symbol_size) {
   }
 }
 
+void symbolXor(const char *lhs, const char *rhs, char *dst,
+               size_t symbol_size) {
+  for (size_t i = 0; i < symbol_size; i++) {
+    dst[i] = lhs[i] ^ rhs[i];
+  }
+}
+
 void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
                  size_t symbol_size, int p, int col_idx) {
   for (int i = 0; i < p - 1; i++) {
@@ -137,6 +144,8 @@ RC encode(const char *path, int p) {
   size_t buffer_size = buffer_size_;
 
   // use this buffer to save row parity
+  // buffers[1] for read
+  // buffers[0] for row parity
   char *buffers[2];
   for (int i = 0; i < 2; i++) {
     buffers[i] = new char[buffer_size + last_size];
@@ -153,7 +162,6 @@ RC encode(const char *path, int p) {
   memcpy(diag_buffer, buffers[0], buffer_size);
   memset(diag_buffer + symbol_size * (p - 1), 0, symbol_size);
   int select_idx = 1;
-
   for (int i = 1; i < p; i++) {
     int read_size = read(fd, buffers[select_idx], buffer_size);
     file_offset += read_size;
@@ -163,11 +171,11 @@ RC encode(const char *path, int p) {
     // save middle result
     caculateXor(buffers[(select_idx + 1) % 2], diag_buffer, buffers[select_idx],
                 symbol_size, p, i);
-    select_idx = (select_idx + 1) % 2;
+    // select_idx = (select_idx + 1) % 2;
   }
 
   // write row parity
-  col_fd = write_col_file(filename, p, p, buffers[select_idx], buffer_size);
+  col_fd = write_col_file(filename, p, p, buffers[0], buffer_size);
   // write diag parity file
   for (int i = 0; i < p - 1; i++) {
     symbolXor(diag_buffer + i * symbol_size,
@@ -286,6 +294,9 @@ RC seqXor(const char *path, std::vector<int> &xor_idxs, int p, char *col_buffer,
     int idx = xor_idxs[i];
 
     sprintf(output_path, "./disk_%d/%s", idx, filename);
+
+    printf("read file:%s\n", output_path);
+
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
       perror("can't open file");
@@ -374,31 +385,32 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
         return rc;
       }
 
-      int special_idx = (fail_idxs[0] + p - 1) % p;
-
       // syndrome is stored in {diag_buffer + (p)*symbol_size}
-      memcpy(diag_buffer + (p)*symbol_size,
-             diag_buffer + special_idx * symbol_size, symbol_size);
-      if (special_idx != p - 1) {
-        symbolXor(diag_buffer + (p)*symbol_size,
-                  diag_parity + special_idx * symbol_size, symbol_size);
+      if (fail_idxs[0] != 0) {
+        int special_idx = (fail_idxs[0] + p - 1) % p;
+        symbolXor(diag_buffer + special_idx * symbol_size,
+                  diag_parity + special_idx * symbol_size,
+                  diag_buffer + (p)*symbol_size, symbol_size);
+      } else {
+        memcpy(diag_buffer + (p)*symbol_size,
+               diag_buffer + (p - 1) * symbol_size, symbol_size);
       }
       // recover col_file fail_idxs[0]
       for (int i = 0; i < p - 1; i++) {
         int diag_idx = (i + fail_idxs[0]) % p;
         if (diag_idx != (p - 1)) {
-          symbolXor(diag_parity + i * symbol_size,
-                    diag_buffer + diag_idx * symbol_size, symbol_size);
-          symbolXor(diag_parity + i * symbol_size,
-                    diag_buffer + (p)*symbol_size, symbol_size);
+          symbolXor(diag_parity + diag_idx * symbol_size,
+                    diag_buffer + diag_idx * symbol_size,
+                    col_buffer + i * symbol_size, symbol_size);
+          symbolXor(col_buffer + i * symbol_size, diag_buffer + (p)*symbol_size,
+                    symbol_size);
         } else {
-          memcpy(diag_parity + i * symbol_size,
-                 diag_buffer + diag_idx * symbol_size, symbol_size);
-          symbolXor(diag_parity + i * symbol_size,
-                    diag_buffer + (p)*symbol_size, symbol_size);
+          symbolXor(diag_parity + diag_idx * symbol_size,
+                    diag_buffer + (p)*symbol_size, col_buffer + i * symbol_size,
+                    symbol_size);
         }
       }
-      write_col_file(filename, p, fail_idxs[0], diag_parity,
+      write_col_file(filename, p, fail_idxs[0], col_buffer,
                      symbol_size * (p - 1));
 
       printf("repair symbol size:%lu size: %lu \n", symbol_size,
@@ -408,7 +420,37 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
       delete[] diag_buffer;
 
     } else if (fail_idxs[1] == p + 1) {
+      printf("repair symbol size:%lu size: %lu , p is %d\n", symbol_size,
+             symbol_size * (p - 1), p);
       // p+1 fails aka diagonal parity fails, another is in disk_{1 - (p-1)}
+      std::vector<int> xor_idxs;
+      for (int i = 0; i < p + 1; i++) {
+        if (i != fail_idxs[0] && i != fail_idxs[1])
+          xor_idxs.push_back(i);
+      }
+
+      char *diag_buffer = new char[symbol_size * (p + 1)];
+      char *col_buffer = new char[symbol_size * p];
+
+      memset(diag_buffer, 0, (p + 1) * symbol_size);
+      memset(col_buffer, 0, (p)*symbol_size);
+
+      RC rc =
+          seqXor(filename, xor_idxs, p, col_buffer, diag_buffer, symbol_size);
+      if (rc != RC::SUCCESS) {
+        delete[] col_buffer;
+        delete[] diag_buffer;
+        return rc;
+      }
+      write_col_file(filename, p, fail_idxs[0], col_buffer,
+                     symbol_size * (p - 1));
+
+      printf("repair symbol size:%lu size: %lu \n", symbol_size,
+             symbol_size * (p - 1));
+
+      delete[] col_buffer;
+      delete[] diag_buffer;
+
     } else {
       // < p
     }
@@ -457,7 +499,7 @@ int main(int argc, char **argv) {
      */
     char *file_path = argv[2];
     int p = atoi(argv[3]);
-    int fail_idxs[] = {1, p};
+    int fail_idxs[] = {1, p + 1};
     repairSingleFile(file_path, fail_idxs, 2, p);
 
   } else {
