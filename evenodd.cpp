@@ -398,7 +398,7 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
           symbolXor(col_buffer + i * symbol_size, diag_buffer + (p)*symbol_size,
                     symbol_size);
         } else {
-          symbolXor(diag_parity + diag_idx * symbol_size,
+          symbolXor(diag_buffer + diag_idx * symbol_size,
                     diag_buffer + (p)*symbol_size, col_buffer + i * symbol_size,
                     symbol_size);
         }
