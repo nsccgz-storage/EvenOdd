@@ -33,6 +33,7 @@ void usage() {
  */
 void symbolXor(char *lhs, const char *rhs, size_t symbol_size) {
   for (size_t i = 0; i < symbol_size; i++) {
+    // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
     lhs[i] = lhs[i] ^ rhs[i];
   }
 }
@@ -146,36 +147,29 @@ RC encode(const char *path, int p) {
   // use this buffer to save row parity
   // buffers[1] for read
   // buffers[0] for row parity
-  char *buffers[2];
-  for (int i = 0; i < 2; i++) {
-    buffers[i] = new char[buffer_size + last_size];
-    memset(buffers[i], 0, buffer_size + last_size);
-  }
-  size_t file_offset = 0;
-  file_offset += read(fd, buffers[0], buffer_size);
 
-  const char *filename = basename(path);
-  int col_fd = write_col_file(filename, p, 0, buffers[0], buffer_size);
+  char *buffer = new char[buffer_size + last_size];
 
-  // use this diag_buffer to save diagonal parity
+  char *col_buffer = new char[buffer_size];
+  memset(col_buffer, 0, buffer_size);
   char *diag_buffer = new char[p * symbol_size];
-  memcpy(diag_buffer, buffers[0], buffer_size);
-  memset(diag_buffer + symbol_size * (p - 1), 0, symbol_size);
-  int select_idx = 1;
-  for (int i = 1; i < p; i++) {
-    int read_size = read(fd, buffers[select_idx], buffer_size);
+  memset(diag_buffer, 0, p * symbol_size);
+  const char *filename = basename(path);
+  size_t file_offset = 0;
+  for (int i = 0; i < p; i++) {
+    int read_size = read(fd, buffer, buffer_size);
+    if (read_size != buffer_size) {
+      perror("Error: can't read");
+      return RC::WRITE_COMPLETE;
+    }
+
     file_offset += read_size;
-    // create col file and write data
-    int col_fd =
-        write_col_file(filename, p, i, buffers[select_idx], buffer_size);
-    // save middle result
-    caculateXor(buffers[(select_idx + 1) % 2], diag_buffer, buffers[select_idx],
-                symbol_size, p, i);
-    // select_idx = (select_idx + 1) % 2;
+    int col_fd = write_col_file(filename, p, i, buffer, buffer_size);
+    caculateXor(col_buffer, diag_buffer, buffer, symbol_size, p, i);
   }
 
   // write row parity
-  col_fd = write_col_file(filename, p, p, buffers[0], buffer_size);
+  int col_fd = write_col_file(filename, p, p, col_buffer, buffer_size);
   // write diag parity file
   for (int i = 0; i < p - 1; i++) {
     symbolXor(diag_buffer + i * symbol_size,
@@ -185,17 +179,16 @@ RC encode(const char *path, int p) {
 
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
-    read(fd, buffers[0], last_size);
+    read(fd, buffer, last_size);
     // write remaining file to the tail of file in disk p-1
-    write_col_file(filename, p, p - 1, buffers[0], last_size, true);
+    write_col_file(filename, p, p - 1, buffer, last_size, true);
 
-    write_remaining_file(filename, p, p, buffers[0], last_size);
-    write_remaining_file(filename, p, p + 1, buffers[0], last_size);
+    write_remaining_file(filename, p, p, buffer, last_size);
+    write_remaining_file(filename, p, p + 1, buffer, last_size);
   }
   close(fd);
-  for (int i = 0; i < 2; i++) {
-    delete[] buffers[i];
-  }
+  delete[] buffer;
+  delete[] col_buffer;
   delete[] diag_buffer;
 
   // TODO: fsync all col files
@@ -297,7 +290,7 @@ RC seqXor(const char *path, std::vector<int> &xor_idxs, int p, char *col_buffer,
 
     printf("read file:%s\n", output_path);
 
-    int fd = open(filename, O_RDONLY);
+    int fd = open(output_path, O_RDONLY);
     if (fd < 0) {
       perror("can't open file");
       return RC::FILE_NOT_EXIST;
@@ -499,7 +492,7 @@ int main(int argc, char **argv) {
      */
     char *file_path = argv[2];
     int p = atoi(argv[3]);
-    int fail_idxs[] = {1, p + 1};
+    int fail_idxs[] = {1, p};
     repairSingleFile(file_path, fail_idxs, 2, p);
 
   } else {
