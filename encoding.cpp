@@ -13,6 +13,8 @@
 
 #include <vector>
 
+#include "log.h"
+
 #ifndef PATH_MAX_LEN
 #define PATH_MAX_LEN 512
 #endif
@@ -107,6 +109,8 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
   return col_fd;
 }
 
+RC bigFileEncode() { return RC::SUCCESS; }
+
 /*
  * Please encode the input file with EVENODD code
  * and store the erasure-coded splits into corresponding disks
@@ -132,8 +136,13 @@ RC encode(const char *path, int p) {
 
   // TODO: if buffer_size_ > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
-  if(buffer_size_ > MAX_BUFFER_SIZE){
-    
+  if (buffer_size_ > MAX_BUFFER_SIZE) {
+    // col file >= memory size
+
+    // stage0: caculate row parity
+
+    // stage1: caculate diagonal parity
+    return bigFileEncode();
   }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   size_t buffer_size = buffer_size_;
