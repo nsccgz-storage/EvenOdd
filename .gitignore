@@ -2,4 +2,6 @@ disk/
 
 bin/
 
-test/
+test
+
+_*_
