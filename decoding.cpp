@@ -93,7 +93,7 @@ void xoreq_diagparity(char *left, char *diag, int left_id, int p) {
  * before), and "save_as" is "tmp_file". After the read operation, there
  * should be a file named "tmp_file", which is the same as "testfile".
  */
-void read1(char *filename, char *save_as) {
+void read1(char *path, char *save_as) {
   struct stat st = {0};
   unsigned long file_size = 0;
   unsigned long remain_size =
@@ -103,6 +103,8 @@ void read1(char *filename, char *save_as) {
   int failed[2];
   char file_path[PATH_MAX_LEN];
   char dir_path[PATH_MAX_LEN];
+
+  char *filename = basename(path);
 
   int disk_id = 0;
   while (p == 0 || disk_id <= p + 1) {
