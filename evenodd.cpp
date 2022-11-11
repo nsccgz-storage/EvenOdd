@@ -1,5 +1,7 @@
 #include "decoding.h"
 #include "encoding.h"
+#include "log.h"
+
 #include <stdio.h>
 void usage() {
   printf("./evenodd write <file_name> <p>\n");
