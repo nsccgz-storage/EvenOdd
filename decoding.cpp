@@ -206,11 +206,11 @@ void read1(char *path, char *save_as) {
     }
     if (remain_size > 0) {
       if(remain_size <= file_size){
-        readRemain(filename, p, p, remain_size, buffer);
+        readRemain(filename, p-1, p, remain_size, buffer);
         writeRemain(buffer, remain_size, output);
       }else{
         char* remain_buffer = (char*) malloc(remain_size);
-        readRemain(filename, p, p, remain_size, remain_buffer);
+        readRemain(filename, p-1, p, remain_size, remain_buffer);
         writeRemain(remain_buffer, remain_size, output);
         free(remain_buffer);
       }
@@ -234,11 +234,11 @@ void read1(char *path, char *save_as) {
       }
       if (remain_size > 0) {
         if(remain_size <= file_size){
-          readRemain(filename, p, p, remain_size, buffer);
+          readRemain(filename, p-1, p, remain_size, buffer);
           writeRemain(buffer, remain_size, output);
         }else{
           char* remain_buffer = (char*) malloc(remain_size);
-          readRemain(filename, p, p, remain_size, remain_buffer);
+          readRemain(filename, p-1, p, remain_size, remain_buffer);
           writeRemain(remain_buffer, remain_size, output);
           free(remain_buffer);
         }
@@ -304,11 +304,11 @@ void read1(char *path, char *save_as) {
         }
         if (remain_size > 0) {
           if(remain_size <= file_size){
-            readRemain(filename, p, p, remain_size, buffer);
+            readRemain(filename, p-1, p, remain_size, buffer);
             writeRemain(buffer, remain_size, output);
           }else{
             char* remain_buffer = (char*) malloc(remain_size);
-            readRemain(filename, p, p, remain_size, remain_buffer);
+            readRemain(filename, p-1, p, remain_size, remain_buffer);
             writeRemain(remain_buffer, remain_size, output);
             free(remain_buffer);
           }
@@ -389,11 +389,11 @@ void read1(char *path, char *save_as) {
       writeDataColumn(missed_column, failed[0], file_size, output, &reset_ptr);
       if (remain_size > 0) {
         if(remain_size <= file_size){
-          readRemain(filename, p, p, remain_size, buffer);
+          readRemain(filename, p+1, p, remain_size, buffer);
           writeRemain(buffer, remain_size, output);
         }else{
           char* remain_buffer = (char*) malloc(remain_size);
-          readRemain(filename, p, p, remain_size, remain_buffer);
+          readRemain(filename, p+1, p, remain_size, remain_buffer);
           writeRemain(remain_buffer, remain_size, output);
           free(remain_buffer);
         }
@@ -472,11 +472,11 @@ void read1(char *path, char *save_as) {
 
       if (remain_size > 0) {
         if(remain_size <= file_size){
-          readRemain(filename, p, p, remain_size, buffer);
+          readRemain(filename, p+1, p, remain_size, buffer);
           writeRemain(buffer, remain_size, output);
         }else{
           char* remain_buffer = (char*) malloc(remain_size);
-          readRemain(filename, p, p, remain_size, remain_buffer);
+          readRemain(filename, p+1, p, remain_size, remain_buffer);
           writeRemain(remain_buffer, remain_size, output);
           free(remain_buffer);
         }
