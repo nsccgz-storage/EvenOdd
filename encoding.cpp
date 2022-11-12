@@ -17,6 +17,8 @@
 #define PATH_MAX_LEN 512
 #endif
 
+static size_t MAX_BUFFER_SIZE = 3UL * 1024 * 1024 * 1024;
+
 /*
  * caculte the xor value and save to lhs
  */
@@ -130,7 +132,9 @@ RC encode(const char *path, int p) {
 
   // TODO: if buffer_size_ > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
-
+  if(buffer_size_ > MAX_BUFFER_SIZE){
+    
+  }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   size_t buffer_size = buffer_size_;
 
