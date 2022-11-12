@@ -19,7 +19,7 @@
 #define PATH_MAX_LEN 512
 #endif
 
-static size_t MAX_BUFFER_SIZE = 3UL * 1024 * 1024 * 1024;
+static size_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
 
 /*
  * caculte the xor value and save to lhs
@@ -111,58 +111,44 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
 
 RC bigFileEncode() { return RC::SUCCESS; }
 
-/*
- * Please encode the input file with EVENODD code
- * and store the erasure-coded splits into corresponding disks
- * For example: Suppose "file_name" is "testfile", and "p" is 5. After your
- * encoding logic, there should be 7 splits, "testfile_0", "testfile_1",
- * ..., "testfile_6", stored in 7 diffrent disk folders from "disk_0" to
- * "disk_6".
- */
-RC encode(const char *path, int p) {
-  size_t fd = open(path, O_RDONLY);
+RC partEncode(int fd, size_t offset, size_t encode_size,
+              const char *save_filename, int p) {
+
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
   }
-  struct stat stat_;
-  fstat(fd, &stat_);
 
   // file size in bytes
-  size_t file_size = stat_.st_size;
+  size_t file_size = encode_size;
   size_t symbol_size = file_size / ((p - 1) * (p));
 
   // last symbol remaining, this will add to the tail of row parity directory
   size_t last_size = file_size - symbol_size * (p - 1) * p;
 
-  // TODO: if buffer_size_ > 4UL * 1024 * 1024 * 1024 Bytes
   size_t buffer_size_ = (p - 1) * symbol_size;
   if (buffer_size_ > MAX_BUFFER_SIZE) {
-    // col file >= memory size
-
-    // stage0: caculate row parity
-
-    // stage1: caculate diagonal parity
-    return bigFileEncode();
+    return RC::BUFFER_OVERFLOW;
   }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   size_t buffer_size = buffer_size_;
 
-  // use this buffer to save row parity
-  // buffers[1] for read
-  // buffers[0] for row parity
-
   char *buffer = new char[buffer_size + last_size];
-
   char *col_buffer = new char[buffer_size];
-  memset(col_buffer, 0, buffer_size);
   char *diag_buffer = new char[p * symbol_size];
+
+  if (!(buffer && col_buffer && diag_buffer)) {
+    LOG_INFO("new buffer fails");
+    return RC::BUFFER_OVERFLOW;
+  }
+
+  memset(col_buffer, 0, buffer_size);
   memset(diag_buffer, 0, p * symbol_size);
-  const char *filename = basename(path);
-  size_t file_offset = 0;
+  const char *filename = basename(save_filename);
+  size_t file_offset = offset;
   for (int i = 0; i < p; i++) {
-    int read_size = read(fd, buffer, buffer_size);
+    int read_size = pread(fd, buffer, buffer_size, file_offset);
     if (read_size != buffer_size) {
-      perror("Error: can't read");
+      LOG_INFO("Error: can't read");
       return RC::WRITE_COMPLETE;
     }
 
@@ -191,11 +177,60 @@ RC encode(const char *path, int p) {
   }
   close(fd);
   delete[] buffer;
+  buffer = nullptr;
   delete[] col_buffer;
+  col_buffer = nullptr;
   delete[] diag_buffer;
+  diag_buffer = nullptr;
 
-  // TODO: fsync all col files
   return RC::SUCCESS;
+}
+
+/*
+ * Please encode the input file with EVENODD code
+ * and store the erasure-coded splits into corresponding disks
+ * For example: Suppose "file_name" is "testfile", and "p" is 5. After your
+ * encoding logic, there should be 7 splits, "testfile_0", "testfile_1",
+ * ..., "testfile_6", stored in 7 diffrent disk folders from "disk_0" to
+ * "disk_6".
+ */
+RC encode(const char *path, int p) {
+  RC rc = RC::SUCCESS;
+
+  size_t fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    return RC::FILE_NOT_EXIST;
+  }
+  struct stat stat_;
+  fstat(fd, &stat_);
+
+  // file size in bytes
+  size_t file_size = stat_.st_size;
+  const char *filename = basename(path);
+  char save_filename[PATH_MAX_LEN];
+
+  int split_num = file_size / (MAX_BUFFER_SIZE * p);
+  for (int i = 0; i < split_num; i++) {
+    sprintf(save_filename, "%s.%d", filename, i);
+    rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+                    save_filename, p);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+  }
+  int last_part_size = file_size % (MAX_BUFFER_SIZE * p);
+  if (last_part_size != 0) {
+    if (split_num == 0) {
+      sprintf(save_filename, "%s", filename);
+    } else
+      sprintf(save_filename, "%s.%d", filename, split_num);
+    rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
+                    save_filename, p);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+  }
+  return rc;
 }
 
 /*

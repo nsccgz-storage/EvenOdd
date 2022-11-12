@@ -16,3 +16,6 @@ target_sources(evenoddlib
 
 add_executable(evenodd "evenodd.cpp")
 target_link_libraries(evenodd evenoddlib)
+
+add_executable(time_check time_check.cpp)
+target_link_libraries(time_check evenoddlib)
