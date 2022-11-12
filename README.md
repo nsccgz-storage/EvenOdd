@@ -13,11 +13,11 @@
 ## correct_and_time.sh
 需要事先编译好生成./evenodd可执行文件
 
-输入参数:<file_size> <prime>
+输入参数: file_size prime
 
-<file_size>：生成测试文件大小，单位为B
+file_size：生成测试文件大小，单位为B
 
-<prime>: 素数
+prime: 素数
 
 每组数据有5个测试案例，例如：./evenodd 1024 7
 1. 删除disk_7和disk_8
