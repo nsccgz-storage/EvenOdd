@@ -9,3 +9,21 @@
 
 - 1. 把文件切分成不同的小块，不同的小块进行 encoding 和 decoding
 - 2. 不切分文件，但是目前的 encoding 和 decoding 算法需要修改
+
+## correct_and_time.sh
+需要事先编译好生成./evenodd可执行文件
+
+输入参数: file_size prime
+
+file_size：生成测试文件大小，单位为B
+
+prime: 素数
+
+每组数据有5个测试案例，例如：./evenodd 1024 7
+1. 删除disk_7和disk_8
+2. 删除disk_5和disk_7
+3. 删除disk_6和_disk_8
+4. 删除disk_5和disk_6
+5. 删除disk_5和disk_4
+
+所有测试出错信息被保存在error_log.txt文件里，如果没有error_log.txt说明所有测试没有问题，有error_log.txt文件出现，则说明至少有一种测试数据出错
