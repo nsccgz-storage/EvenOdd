@@ -17,10 +17,6 @@ mkdir ./test_data
 dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 
 #编译时间测试程序
-g++ -c decoding.cpp -o decoding.o
-g++ -c encoding.cpp -o encoding.o
-g++ -o time_check time_check.cpp decoding.o encoding.o
-rm -rf *.o
 
 
 #测试write模块时间
