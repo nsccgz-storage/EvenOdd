@@ -16,11 +16,22 @@ prime=$2
 mkdir ./test_data
 dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 
+#编译时间测试程序
+g++ -c decoding.cpp -o decoding.o
+g++ -c encoding.cpp -o encoding.o
+g++ -o time_check time_check.cpp decoding.o encoding.o
+rm -rf *.o
+
+
+#测试write模块时间
+./time_check write ./test_data/data $prime
+rm -rf disk*
+
+#测试evenodd正确性
+./evenodd write ./test_data/data $prime
 ## test two files failed
 ### case 1:
 echo "============================"
-./evenodd write ./test_data/data $prime
-
 let "index_1=prime"
 let "index_2=prime+1"
 mv disk_$index_1 _disk_$index_1
@@ -33,6 +44,9 @@ then
     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
     echo "$result" >> error_log.txt
     echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
 fi
 mv _disk_$index_1 disk_$index_1
@@ -52,6 +66,9 @@ then
     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
     echo "$result" >> error_log.txt
     echo "==============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
 fi
 mv _disk_$index_1 disk_$index_1
@@ -71,6 +88,9 @@ then
     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
     echo "$result" >> error_log.txt
     echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
 fi
 mv _disk_$index_1 disk_$index_1
@@ -91,8 +111,12 @@ then
     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
     echo "$result" >> error_log.txt
     echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
 fi
+
 mv _disk_$index_1 disk_$index_1
 mv _disk_$index_2 disk_$index_2
 rm -rf ./test_data/data_read
@@ -111,6 +135,9 @@ then
     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
     echo "$result" >> error_log.txt
     echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
 fi
 mv _disk_$index_1 disk_$index_1
