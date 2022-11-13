@@ -220,10 +220,10 @@ RC encode(const char *path, int p) {
   }
   int last_part_size = file_size % (MAX_BUFFER_SIZE * p);
   if (last_part_size != 0) {
-    if (split_num == 0) {
-      sprintf(save_filename, "%s", filename);
-    } else
-      sprintf(save_filename, "%s.%d", filename, split_num);
+    // if (split_num == 0) {
+    //   sprintf(save_filename, "%s", filename);
+    // } else
+    sprintf(save_filename, "%s.%d", filename, split_num);
     rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
                     save_filename, p);
     if (rc != RC::SUCCESS) {

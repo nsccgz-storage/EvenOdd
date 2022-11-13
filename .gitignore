@@ -2,11 +2,9 @@ disk/
 
 bin/
 
-test
-
 _*_
 
 evenodd
 .vscode/
-.cache
+.cache/
 build/
