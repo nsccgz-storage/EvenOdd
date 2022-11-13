@@ -3,7 +3,7 @@ disk/
 bin/
 
 _*_
-
+test/
 evenodd
 .vscode/
 .cache/

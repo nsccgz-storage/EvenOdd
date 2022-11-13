@@ -1,7 +1,5 @@
 #include "encoding.h"
 
-#include <bits/types/FILE.h>
-#include <cstddef>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -127,6 +125,7 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
 
   size_t buffer_size_ = (p - 1) * symbol_size;
   if (buffer_size_ > MAX_BUFFER_SIZE) {
+    LOG_DEBUG("buffer need: %llu: ", buffer_size_);
     return RC::BUFFER_OVERFLOW;
   }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
@@ -146,7 +145,7 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
   const char *filename = basename(save_filename);
   size_t file_offset = offset;
   for (int i = 0; i < p; i++) {
-    int read_size = pread(fd, buffer, buffer_size, file_offset);
+    int read_size = pread64(fd, buffer, buffer_size, file_offset);
     if (read_size != buffer_size) {
       LOG_INFO("Error: can't read");
       return RC::WRITE_COMPLETE;
@@ -196,9 +195,9 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
  */
 RC encode(const char *path, int p) {
   RC rc = RC::SUCCESS;
-
   size_t fd = open(path, O_RDONLY);
   if (fd < 0) {
+    LOG_ERROR("error, can't open file");
     return RC::FILE_NOT_EXIST;
   }
   struct stat stat_;
@@ -215,10 +214,11 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      LOG_ERROR("error,");
       return rc;
     }
   }
-  int last_part_size = file_size % (MAX_BUFFER_SIZE * p);
+  size_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
   if (last_part_size != 0) {
     // if (split_num == 0) {
     //   sprintf(save_filename, "%s", filename);
@@ -227,6 +227,7 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      LOG_ERROR("error: %d", rc);
       return rc;
     }
   }

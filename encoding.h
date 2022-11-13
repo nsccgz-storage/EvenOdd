@@ -1,6 +1,10 @@
 #pragma once
 
-#include <cstddef>
+#ifndef __SIZE_T
+#define __SIZE_T
+typedef unsigned long long size_t;
+#endif
+
 #include <vector>
 
 enum RC {

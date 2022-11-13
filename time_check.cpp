@@ -1,9 +1,9 @@
 #include "decoding.h"
 #include "encoding.h"
-#include <sys/time.h>       
-#include <stdio.h>     
-#include <string.h> 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
 
 void usage() {
   printf("./evenodd write <file_name> <p>\n");
@@ -30,17 +30,16 @@ int main(int argc, char **argv) {
     struct timeval end;
     float time = 0;
     float average_time = 0;
-    for(int i = 0; i < 1; i++){
-        gettimeofday(&start,NULL);
-        RC error_code = encode(file_path, p);
-        gettimeofday(&end,NULL);
-        time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec)/1e6;
-        printf("write数据消耗时间:%f s\n ",time);
+    for (int i = 0; i < 1; i++) {
+      gettimeofday(&start, NULL);
+      RC error_code = encode(file_path, p);
+      gettimeofday(&end, NULL);
+      time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+      printf("write数据消耗时间: %f s\n ", time);
 
-        //average_time += time;
-
+      // average_time += time;
     }
-    
+
   } else if (strcmp(op, "read") == 0) {
     /*
      * Please read the file specified by "file_name", and store it as a file
@@ -58,18 +57,17 @@ int main(int argc, char **argv) {
     struct timeval end;
     float time = 0;
     float average_time = 0;
-    
-    for(int i = 0; i < 1; i++){
-        gettimeofday(&start,NULL);
-        read1(argv[2], argv[3]);
-        gettimeofday(&end,NULL);
-        time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec)/1e6;
-        printf("read数据消耗时间:%f s\n ",time);
 
-        //average_time += time;
+    for (int i = 0; i < 1; i++) {
+      gettimeofday(&start, NULL);
+      read1(argv[2], argv[3]);
+      gettimeofday(&end, NULL);
+      time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+      printf("read数据消耗时间: %f s\n ", time);
 
+      // average_time += time;
     }
-    
+
   } else if (strcmp(op, "repair") == 0) {
     /*
      * Please repair failed disks. The number of failures is specified by
@@ -85,4 +83,3 @@ int main(int argc, char **argv) {
   }
   return 0;
 }
-
