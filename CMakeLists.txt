@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18.4)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 project(EVEN_ODD)
-
+set(CMAKE_CXX_FLAGS -g)
 add_library(evenoddlib "")
 target_sources(evenoddlib
     PRIVATE
