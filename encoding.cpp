@@ -1,5 +1,6 @@
 #include "encoding.h"
 
+#include <cstddef>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,7 +115,6 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
   }
-
   // file size in bytes
   off_t file_size = encode_size;
   off_t symbol_size = file_size / ((p - 1) * (p));
@@ -203,7 +203,7 @@ RC encode(const char *path, int p) {
   fstat(fd, &stat_);
 
   // file size in bytes
-  off_t file_size = stat_.st_size;
+  size_t file_size = stat_.st_size;
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18.4)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 set(CMAKE_CXX_FLAGS "-g")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FILE_OFFSET_BITS=64")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FILE_OFFSET_BITS=64")
 project(EVEN_ODD)
 add_library(evenoddlib "")
 target_sources(evenoddlib
