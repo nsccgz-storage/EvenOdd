@@ -1,5 +1,6 @@
 #include "encoding.h"
 
+#include <cstddef>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,27 +18,26 @@
 #define PATH_MAX_LEN 512
 #endif
 
-static size_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
 
 /*
  * caculte the xor value and save to lhs
  */
-void symbolXor(char *lhs, const char *rhs, size_t symbol_size) {
-  for (size_t i = 0; i < symbol_size; i++) {
+void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
+  for (off_t i = 0; i < symbol_size; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
     lhs[i] = lhs[i] ^ rhs[i];
   }
 }
 
-void symbolXor(const char *lhs, const char *rhs, char *dst,
-               size_t symbol_size) {
-  for (size_t i = 0; i < symbol_size; i++) {
+void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size) {
+  for (off_t i = 0; i < symbol_size; i++) {
     dst[i] = lhs[i] ^ rhs[i];
   }
 }
 
 void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
-                 size_t symbol_size, int p, int col_idx) {
+                 off_t symbol_size, int p, int col_idx) {
   for (int i = 0; i < p - 1; i++) {
     int diag_idx = (i + col_idx) % p;
     symbolXor(pre_diag + diag_idx * symbol_size, cur_data + i * symbol_size,
@@ -48,7 +48,7 @@ void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
 }
 
 int write_remaining_file(const char *filename, int p, int i, char *buffer,
-                         size_t last_size) {
+                         off_t last_size) {
   char output_path[PATH_MAX_LEN];
 
   // open file
@@ -58,7 +58,7 @@ int write_remaining_file(const char *filename, int p, int i, char *buffer,
     perror("Error: can't create file");
     return -1;
   }
-  size_t size = write(col_fd, buffer, last_size);
+  off_t size = write(col_fd, buffer, last_size);
   if (size != last_size) {
     perror("Error: remaining, write don't completely");
     // return RC::WRITE_COMPLETE;
@@ -70,7 +70,7 @@ int write_remaining_file(const char *filename, int p, int i, char *buffer,
 }
 
 int write_col_file(const char *filename, int p, int i, char *buffer,
-                   size_t write_size, bool flag = false) {
+                   off_t write_size, bool flag = false) {
   char output_path[PATH_MAX_LEN];
   struct stat st;
   sprintf(output_path, "./disk_%d", i);
@@ -84,7 +84,7 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
     col_fd = open(output_path, O_APPEND | O_WRONLY);
   } else {
     col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
-    size_t size_ = write(col_fd, (void *)(&p), sizeof(p));
+    off_t size_ = write(col_fd, (void *)(&p), sizeof(p));
     if (size_ != sizeof(p)) {
       perror("Error: col, write don't completely");
       // return RC::WRITE_COMPLETE;
@@ -96,7 +96,7 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
     perror("Error: can't create file");
     return -1;
   }
-  size_t size = write(col_fd, buffer, write_size);
+  off_t size = write(col_fd, buffer, write_size);
   if (size != write_size) {
     perror("Error: col, write don't completely");
     // return RC::WRITE_COMPLETE;
@@ -109,27 +109,26 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
 
 RC bigFileEncode() { return RC::SUCCESS; }
 
-RC partEncode(int fd, size_t offset, size_t encode_size,
+RC partEncode(int fd, off_t offset, off_t encode_size,
               const char *save_filename, int p) {
 
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
   }
-
   // file size in bytes
-  size_t file_size = encode_size;
-  size_t symbol_size = file_size / ((p - 1) * (p));
+  off_t file_size = encode_size;
+  off_t symbol_size = file_size / ((p - 1) * (p));
 
   // last symbol remaining, this will add to the tail of row parity directory
-  size_t last_size = file_size - symbol_size * (p - 1) * p;
+  off_t last_size = file_size - symbol_size * (p - 1) * p;
 
-  size_t buffer_size_ = (p - 1) * symbol_size;
+  off_t buffer_size_ = (p - 1) * symbol_size;
   if (buffer_size_ > MAX_BUFFER_SIZE) {
-    LOG_DEBUG("buffer need: %llu: ", buffer_size_);
+    LOG_ERROR("buffer need: %llu: ", buffer_size_);
     return RC::BUFFER_OVERFLOW;
   }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
-  size_t buffer_size = buffer_size_;
+  off_t buffer_size = buffer_size_;
 
   char *buffer = new char[buffer_size + last_size];
   char *col_buffer = new char[buffer_size];
@@ -143,10 +142,11 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
   memset(col_buffer, 0, buffer_size);
   memset(diag_buffer, 0, p * symbol_size);
   const char *filename = basename(save_filename);
-  size_t file_offset = offset;
+  off_t file_offset = offset;
   for (int i = 0; i < p; i++) {
-    int read_size = pread64(fd, buffer, buffer_size, file_offset);
+    int read_size = pread(fd, buffer, buffer_size, file_offset);
     if (read_size != buffer_size) {
+      perror("Error: ");
       LOG_INFO("Error: can't read");
       return RC::WRITE_COMPLETE;
     }
@@ -174,7 +174,6 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
     write_remaining_file(filename, p, p, buffer, last_size);
     write_remaining_file(filename, p, p + 1, buffer, last_size);
   }
-  close(fd);
   delete[] buffer;
   buffer = nullptr;
   delete[] col_buffer;
@@ -195,7 +194,7 @@ RC partEncode(int fd, size_t offset, size_t encode_size,
  */
 RC encode(const char *path, int p) {
   RC rc = RC::SUCCESS;
-  size_t fd = open(path, O_RDONLY);
+  int fd = open(path, O_RDONLY);
   if (fd < 0) {
     LOG_ERROR("error, can't open file");
     return RC::FILE_NOT_EXIST;
@@ -214,11 +213,12 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      close(fd);
       LOG_ERROR("error,");
       return rc;
     }
   }
-  size_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
+  off_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
   if (last_part_size != 0) {
     // if (split_num == 0) {
     //   sprintf(save_filename, "%s", filename);
@@ -227,10 +227,12 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      close(fd);
       LOG_ERROR("error: %d", rc);
       return rc;
     }
   }
+  close(fd);
   return rc;
 }
 
@@ -311,15 +313,15 @@ RC seqXor(const char *path, std::vector<int> &xor_idxs, int p, char *col_buffer,
           char *diag_buffer, int symbol_size) {
 
   // TODO: if buffer_size_ > 4UL * 1024 * 1024 * 1024 Bytes
-  size_t buffer_size_ = (p - 1) * symbol_size;
+  off_t buffer_size_ = (p - 1) * symbol_size;
 
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
-  size_t buffer_size = buffer_size_;
+  off_t buffer_size = buffer_size_;
   char *buffer = new char[buffer_size];
   memset(buffer, 0, buffer_size);
   const char *filename = basename(path);
 
-  size_t file_offset = 0;
+  off_t file_offset = 0;
   char output_path[PATH_MAX_LEN];
 
   int num = xor_idxs.size();
@@ -367,9 +369,9 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
   int _fd = open(output_path, O_RDONLY);
   struct stat stat_;
   fstat(_fd, &stat_);
-  size_t file_size_ = stat_.st_size;
-  size_t symbol_size = (file_size_ - sizeof(int)) / (p - 1);
-  printf("file size: %lu symbol size: %lu\n", file_size_, symbol_size);
+  off_t file_size_ = stat_.st_size;
+  off_t symbol_size = (file_size_ - sizeof(int)) / (p - 1);
+  // printf("file size: %lu symbol size: %lu\n", file_size_, symbol_size);
 
   if (num > 2 || num <= 0) {
     return RC::CANNOT_REPAIR;

@@ -3,8 +3,9 @@ disk/
 bin/
 
 _*_
-test/
+test/**
 evenodd
 .vscode/
 .cache/
 build/
+!/test/encode_test.sh

@@ -1,12 +1,7 @@
 #pragma once
-
-#ifndef __SIZE_T
-#define __SIZE_T
-typedef unsigned long long size_t;
-#endif
-
+#include "util.h"
+#include <stdio.h>
 #include <vector>
-
 enum RC {
   SUCCESS = 1,
   FILE_NOT_EXIST,
@@ -19,18 +14,18 @@ enum RC {
 /*
  * caculte the xor value and save to lhs
  */
-void symbolXor(char *lhs, const char *rhs, size_t symbol_size);
+void symbolXor(char *lhs, const char *rhs, off_t symbol_size);
 
-void symbolXor(const char *lhs, const char *rhs, char *dst, size_t symbol_size);
+void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size);
 
 void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
-                 size_t symbol_size, int p, int col_idx);
+                 off_t symbol_size, int p, int col_idx);
 
 int write_remaining_file(const char *filename, int p, int i, char *buffer,
-                         size_t last_size);
+                         off_t last_size);
 
 int write_col_file(const char *filename, int p, int i, char *buffer,
-                   size_t write_size, bool flag);
+                   off_t write_size, bool flag);
 
 /*
  * Please encode the input file with EVENODD code
