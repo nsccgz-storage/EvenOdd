@@ -8,7 +8,7 @@ enum LOG_LEVEL {
   LOG_LEVEL_LAST
 };
 
-int output(LOG_LEVEL level, const char *file_name, int line, const char *f,
+int __log_output__(LOG_LEVEL level, const char *file_name, int line, const char *f,
            ...);
 
 #define LOG_ERROR(fmt, ...)                                                    \
@@ -20,5 +20,5 @@ int output(LOG_LEVEL level, const char *file_name, int line, const char *f,
 
 #define LOG_OUTPUT(level, fmt, ...)                                            \
   do {                                                                         \
-    output(level, __FILE__, __LINE__, fmt, ##__VA_ARGS__);                     \
+    __log_output__(level, __FILE__, __LINE__, fmt, ##__VA_ARGS__);                     \
   } while (0)

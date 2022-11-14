@@ -1,6 +1,7 @@
 #include "encoding.h"
 
 #include <cstddef>
+#include <future>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,11 +15,13 @@
 
 #include "log.h"
 
+#include "util/ThreadPool.h"
+
 #ifndef PATH_MAX_LEN
 #define PATH_MAX_LEN 512
 #endif
 
-static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
 void setBufferSize(off_t buffer_size_){
   MAX_BUFFER_SIZE = buffer_size_;
 }
@@ -169,7 +172,83 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
 
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
-    read(fd, buffer, last_size);
+    pread(fd, buffer, last_size, file_offset);
+    // write remaining file to the tail of file in disk p-1
+    write_col_file(filename, p, p - 1, buffer, last_size, true);
+
+    write_remaining_file(filename, p, p, buffer, last_size);
+    write_remaining_file(filename, p, p + 1, buffer, last_size);
+  }
+  delete[] buffer;
+  buffer = nullptr;
+  delete[] col_buffer;
+  col_buffer = nullptr;
+  delete[] diag_buffer;
+  diag_buffer = nullptr;
+
+  return RC::SUCCESS;
+}
+
+RC thread_partEncode(int fd, off_t offset, off_t encode_size,
+              const char *file_name, int p, int _idx) {
+
+  if (fd < 0) {
+    return RC::FILE_NOT_EXIST;
+  }
+  // file size in bytes
+  off_t file_size = encode_size;
+  off_t symbol_size = file_size / ((p - 1) * (p));
+
+  // last symbol remaining, this will add to the tail of row parity directory
+  off_t last_size = file_size - symbol_size * (p - 1) * p;
+
+  off_t buffer_size_ = (p - 1) * symbol_size;
+  if (buffer_size_ > MAX_BUFFER_SIZE) {
+    LOG_ERROR("buffer need: %llu: ", buffer_size_);
+    return RC::BUFFER_OVERFLOW;
+  }
+  // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
+  off_t buffer_size = buffer_size_;
+
+  char *buffer = new char[buffer_size + last_size];
+  char *col_buffer = new char[buffer_size];
+  char *diag_buffer = new char[p * symbol_size];
+
+  if (!(buffer && col_buffer && diag_buffer)) {
+    LOG_INFO("new buffer fails");
+    return RC::BUFFER_OVERFLOW;
+  }
+  char save_filename[PATH_MAX_LEN];
+  sprintf(save_filename, "%s.%d", file_name, _idx);
+  memset(col_buffer, 0, buffer_size);
+  memset(diag_buffer, 0, p * symbol_size);
+  const char *filename = basename(save_filename);
+  off_t file_offset = offset;
+  for (int i = 0; i < p; i++) {
+    int read_size = pread(fd, buffer, buffer_size, file_offset);
+    if (read_size != buffer_size) {
+      perror("Error: ");
+      LOG_INFO("Error: can't read");
+      return RC::WRITE_COMPLETE;
+    }
+
+    file_offset += read_size;
+    int col_fd = write_col_file(filename, p, i, buffer, buffer_size);
+    caculateXor(col_buffer, diag_buffer, buffer, symbol_size, p, i);
+  }
+
+  // write row parity
+  int col_fd = write_col_file(filename, p, p, col_buffer, buffer_size);
+  // write diag parity file
+  for (int i = 0; i < p - 1; i++) {
+    symbolXor(diag_buffer + i * symbol_size,
+              diag_buffer + (p - 1) * symbol_size, symbol_size);
+  }
+  col_fd = write_col_file(filename, p, p + 1, diag_buffer, buffer_size);
+
+  // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
+  if (last_size > 0) {
+    pread(fd, buffer, last_size, file_offset);
     // write remaining file to the tail of file in disk p-1
     write_col_file(filename, p, p - 1, buffer, last_size, true);
 
@@ -210,14 +289,34 @@ RC encode(const char *path, int p) {
   char save_filename[PATH_MAX_LEN];
 
   int split_num = file_size / (MAX_BUFFER_SIZE * p);
-  for (int i = 0; i < split_num; i++) {
-    sprintf(save_filename, "%s.%d", filename, i);
-    rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
-                    save_filename, p);
-    if (rc != RC::SUCCESS) {
-      close(fd);
-      LOG_ERROR("error,");
-      return rc;
+
+  {
+    int thread_num = 4;
+    ThreadPool pool(thread_num);
+    std::vector<std::future<RC>> results;
+
+    LOG_DEBUG("%d ", split_num);
+    for (int i = 0; i < split_num; i++) {
+      // sprintf(save_filename, "%s.%d", filename, i);
+      results.emplace_back(
+        pool.enqueue(thread_partEncode, fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), filename, p, i)
+      );
+
+      // rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), save_filename, p);
+      //   if (rc != RC::SUCCESS) {
+      //   close(fd);
+      //   LOG_ERROR("error,");
+      //   return rc;
+      // }
+    }
+    for(auto && result: results){
+      rc = result.get();
+      // LOG_DEBUG("%d", rc);
+      if (rc != RC::SUCCESS) {
+        close(fd);
+        LOG_ERROR("error,");
+        return rc;
+      }
     }
   }
   off_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
@@ -484,11 +583,6 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
 
       printf("repair symbol size:%lu size: %lu \n", symbol_size,
              symbol_size * (p - 1));
-
-      delete[] col_buffer;
-      delete[] diag_buffer;
-
-    } else {
       // < p
     }
   }
