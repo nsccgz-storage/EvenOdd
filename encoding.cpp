@@ -18,8 +18,10 @@
 #define PATH_MAX_LEN 512
 #endif
 
-static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
-
+static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
+void setBufferSize(off_t buffer_size_){
+  MAX_BUFFER_SIZE = buffer_size_;
+}
 /*
  * caculte the xor value and save to lhs
  */
@@ -482,11 +484,6 @@ RC repairSingleFile(const char *filename, int *fail_idxs, int num, int p) {
 
       printf("repair symbol size:%lu size: %lu \n", symbol_size,
              symbol_size * (p - 1));
-
-      delete[] col_buffer;
-      delete[] diag_buffer;
-
-    } else {
       // < p
     }
   }

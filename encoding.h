@@ -11,6 +11,8 @@ enum RC {
   BUFFER_OVERFLOW,
 };
 
+
+void setBufferSize(off_t buffer_size_);
 /*
  * caculte the xor value and save to lhs
  */

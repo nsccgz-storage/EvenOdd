@@ -6,7 +6,7 @@
 
 static LOG_LEVEL CUR_LEVEL = LOG_LEVEL::LOG_LEVEL_INFO;
 
-int output(LOG_LEVEL level, const char *file_name, int line, const char *f,
+int __log_output__(LOG_LEVEL level, const char *file_name, int line, const char *f,
            ...) {
   va_list args;
   char msg[ONE_KILO];
