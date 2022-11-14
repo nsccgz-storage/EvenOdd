@@ -1,76 +1,169 @@
 #!/bin/bash
 
+rm -rf build
+
 ./compile.sh
 
-rm -rf test
-mkdir test
-cd test
-mkdir result
+if [ $# != 2 ]; then
+    echo "usage: bash correct.sh <file_size> <prime>"
+    exit 1
+fi
 
-INPUT='lsmtree.pdf'
+file_size=$1
+index_1=0
+index_2=0
+prime=$2
 
-../evenodd write ../data/$INPUT 5
+#生成测试文件
+cd build
+rm -rf disk*
+rm -rf test*
 
-## test reading 
-../evenodd read $INPUT result/testread_0
-diff ../data/$INPUT result/testread_0
+mkdir ./test_data
+dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 
-## test one file failed
-echo "============================"
-mv disk_3 _disk_3
-../evenodd read $INPUT result/testread_11
-diff ../data/$INPUT result/testread_11
+#编译时间测试程序
 
-echo "============================"
-mv _disk_3 disk_3
-mv disk_6 _disk_6
-../evenodd read $INPUT result/testread_12
-mv _disk_6 disk_6
-diff ../data/$INPUT result/testread_12
+
+#测试write模块时间
+./time_check write ./test_data/data $prime
+rm -rf disk*
+
+#测试evenodd正确性
+./evenodd write ./test_data/data $prime
+
+## test no filed failed
+./evenodd read ./test_data/data ./test_data/data_read_0
+result=`diff ./test_data/data ./test_data/data_read_0`
+if [ -n "$result" ]
+then
+    echo "test no file failed" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
+fi
+
 
 ## test two files failed
 ### case 1:
 echo "============================"
-rm -rf disk_*
-../evenodd write ../data/$INPUT 5
-rm disk_[5,6]/*
-../evenodd read $INPUT result/testread_21
-diff ../data/$INPUT result/testread_21
+let "index_1=prime"
+let "index_2=prime+1"
+mv disk_$index_1 _disk_$index_1
+mv disk_$index_2 _disk_$index_2
+./evenodd read ./test_data/data ./test_data/data_read_21
+result=`diff ./test_data/data ./test_data/data_read_21`
+if [ -n "$result" ]
+then
+    echo "case 1" >> error_log.txt
+    echo "删除掉disk_${index_1}和disk_${index_2} read失败" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
-### case 2:
-echo "============================"
-rm -rf disk_*
-../evenodd write ../data/$INPUT 5
-rm disk_[3,6]/*
+fi
+mv _disk_$index_1 disk_$index_1
+mv _disk_$index_2 disk_$index_2
+rm -rf ./test_data/data_read
+echo ====================================
+# ### case 2:
+let "index_1=prime-2"
+let "index_2=prime"
+mv disk_$index_1 _disk_$index_1
+mv disk_$index_2 _disk_$index_2
+./evenodd read ./test_data/data ./test_data/data_read_22
+result=`diff ./test_data/data ./test_data/data_read_22`
+if [ -n "$result" ]
+then
+    echo "case 2" >> error_log.txt
+    echo "删除掉disk_${index_1}和disk_${index_2} read失败" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "==============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
-../evenodd read $INPUT result/testread_22
-diff ../data/$INPUT result/testread_22
+fi
+mv _disk_$index_1 disk_$index_1
+mv _disk_$index_2 disk_$index_2
+rm -rf ./test_data/data_read
+echo ====================================
+# ### case 3:
+let "index_1=prime-1"
+let "index_2=prime+1"
+mv disk_$index_1 _disk_$index_1
+mv disk_$index_2 _disk_$index_2
+./evenodd read ./test_data/data ./test_data/data_read_23
+result=`diff ./test_data/data ./test_data/data_read_23`
+if [ -n "$result" ]
+then
+    echo "case 3" >> error_log.txt
+    echo "删除掉disk_${index_1}和disk_${index_2} read失败" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
-### case 3:
-echo "============================"
-rm -rf disk_*
-../evenodd write ../data/$INPUT 5
-rm disk_[4,5]/*
+fi
+mv _disk_$index_1 disk_$index_1
+mv _disk_$index_2 disk_$index_2
+rm -rf ./test_data/data_read
+echo ====================================
 
-../evenodd read $INPUT result/testread_23
-diff ../data/$INPUT result/testread_23
+# ### case 4:
+let "index_1=prime-2"
+let "index_2=prime-1"
+mv disk_$index_1 _disk_$index_1
+mv disk_$index_2 _disk_$index_2
+./evenodd read ./test_data/data ./test_data/data_read_24
+result=`diff ./test_data/data ./test_data/data_read_24`
+if [ -n "$result" ]
+then
+    echo "case 4" >> error_log.txt
+    echo "删除掉disk_${index_1}和disk_${index_2} read失败" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
-### case 4:
-echo "============================"
-rm -rf disk_*
-../evenodd write ../data/$INPUT 5
-rm -r disk_[0,2]
+fi
 
-../evenodd read $INPUT result/testread_24
-diff ../data/$INPUT result/testread_24
+mv _disk_$index_1 disk_$index_1
+mv _disk_$index_2 disk_$index_2
+rm -rf ./test_data/data_read
+echo ====================================
 
-## test more disks failed
-echo "============================"
-rm -rf disk_*
-../evenodd write ../data/$INPUT 5
-rm disk_[0-2]/*
-../evenodd read $INPUT result/testread_3
+# ### case 5:
+let "index_1=prime-2"
+let "index_2=prime-3"
+mv disk_$index_1 _disk_$index_1
+mv disk_$index_2 _disk_$index_2
+./evenodd read ./test_data/data ./test_data/data_read_25
+result=`diff ./test_data/data ./test_data/data_read_25`
+if [ -n "$result" ]
+then
+    echo "case 5" >> error_log.txt
+    echo "删除掉disk_${index_1}和disk_${index_2} read失败" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
 
-
-
-
+fi
+mv _disk_$index_1 disk_$index_1
+mv _disk_$index_2 disk_$index_2
+rm -rf ./test_data/data_read
+echo ====================================

@@ -4,7 +4,7 @@
 
 #define ONE_KILO 1024
 
-static LOG_LEVEL CUR_LEVEL = LOG_LEVEL::LOG_LEVEL_DEBUG;
+static LOG_LEVEL CUR_LEVEL = LOG_LEVEL::LOG_LEVEL_INFO;
 
 int output(LOG_LEVEL level, const char *file_name, int line, const char *f,
            ...) {

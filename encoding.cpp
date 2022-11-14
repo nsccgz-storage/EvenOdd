@@ -18,7 +18,7 @@
 #define PATH_MAX_LEN 512
 #endif
 
-static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
 
 /*
  * caculte the xor value and save to lhs
@@ -167,7 +167,7 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
 
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
-    read(fd, buffer, last_size);
+    pread(fd, buffer, last_size, file_offset);
     // write remaining file to the tail of file in disk p-1
     write_col_file(filename, p, p - 1, buffer, last_size, true);
 
