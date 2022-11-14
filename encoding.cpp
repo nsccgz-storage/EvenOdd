@@ -289,13 +289,18 @@ RC encode(const char *path, int p) {
   char save_filename[PATH_MAX_LEN];
 
   int split_num = file_size / (MAX_BUFFER_SIZE * p);
-
+  // for (int i = 0; i < split_num; i++) {
+  //   rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), save_filename, p);
+  //   if (rc != RC::SUCCESS) {
+  //     close(fd);
+  //     LOG_ERROR("error,");
+  //     return rc;
+  //   }
+  // }
   {
     int thread_num = 4;
     ThreadPool pool(thread_num);
     std::vector<std::future<RC>> results;
-
-    LOG_DEBUG("%d ", split_num);
     for (int i = 0; i < split_num; i++) {
       // sprintf(save_filename, "%s.%d", filename, i);
       results.emplace_back(
