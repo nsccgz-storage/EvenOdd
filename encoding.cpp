@@ -124,7 +124,7 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
 
   off_t buffer_size_ = (p - 1) * symbol_size;
   if (buffer_size_ > MAX_BUFFER_SIZE) {
-    LOG_DEBUG("buffer need: %llu: ", buffer_size_);
+    LOG_ERROR("buffer need: %llu: ", buffer_size_);
     return RC::BUFFER_OVERFLOW;
   }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
@@ -144,8 +144,9 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   const char *filename = basename(save_filename);
   off_t file_offset = offset;
   for (int i = 0; i < p; i++) {
-    int read_size = pread64(fd, buffer, buffer_size, file_offset);
+    int read_size = pread(fd, buffer, buffer_size, file_offset);
     if (read_size != buffer_size) {
+      perror("Error: ");
       LOG_INFO("Error: can't read");
       return RC::WRITE_COMPLETE;
     }
@@ -173,7 +174,6 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
     write_remaining_file(filename, p, p, buffer, last_size);
     write_remaining_file(filename, p, p + 1, buffer, last_size);
   }
-  close(fd);
   delete[] buffer;
   buffer = nullptr;
   delete[] col_buffer;
@@ -213,6 +213,7 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      close(fd);
       LOG_ERROR("error,");
       return rc;
     }
@@ -226,10 +227,12 @@ RC encode(const char *path, int p) {
     rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
                     save_filename, p);
     if (rc != RC::SUCCESS) {
+      close(fd);
       LOG_ERROR("error: %d", rc);
       return rc;
     }
   }
+  close(fd);
   return rc;
 }
 
