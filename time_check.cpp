@@ -30,6 +30,12 @@ int main(int argc, char **argv) {
     struct timeval end;
     float time = 0;
     float average_time = 0;
+
+    if(argc == 5){
+      size_t size = atoi(argv[4]);
+      // size MiB
+      setBufferSize((size_t)(size) * 1024 * 1024);
+    }
     for (int i = 0; i < 1; i++) {
       gettimeofday(&start, NULL);
       RC error_code = encode(file_path, p);
