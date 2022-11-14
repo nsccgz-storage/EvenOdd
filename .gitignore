@@ -8,4 +8,5 @@ evenodd
 .vscode/
 .cache/
 build/
-!/test/encode_test.sh
+!/test/*.sh
+!/test/*.py
