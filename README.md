@@ -29,3 +29,16 @@ prime: 素数
 所有测试出错信息被保存在error_log.txt文件里，如果没有error_log.txt说明所有测试没有问题，有error_log.txt文件出现，则说明至少有一种测试数据出错
 
 每一组测试都会在终端显示write和read时间
+
+## run.sh
+run.sh是在time_and_correct.sh基础上增加了生成火焰图命令，现在直接运行 run.sh脚本就可以了
+
+执行脚本前，需要在Evenodd主目录下下载火焰图生成工具:
+
+git clone git@github.com:brendangregg/FlameGraph.git
+
+同时运行环境需要提前安装perf工具
+
+例如：sudo ./run.sh 1024 7
+
+执行完毕后，会生成perf图文件夹，里面就是生成的火焰图
