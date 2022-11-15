@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -11,48 +13,50 @@
 #define PATH_MAX_LEN 512
 #endif
 
-void readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result) {
-  FILE *input;
+RC readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result) {
   char file_path[PATH_MAX_LEN];
   sprintf(file_path, "disk_%d/%s.%d", disk_id, filename, file_id);
-  input = fopen(file_path, "rb");
-  fseek(input, sizeof(int), SEEK_SET);
-  fread(result, file_size, 1, input);
-  fclose(input);
+  int fd = open(file_path, O_RDONLY);
+  if (fd < 0) {
+    LOG_ERROR("error, can't open file");
+    return RC::FILE_NOT_EXIST;
+  }
+  lseek(fd, sizeof(int), SEEK_SET);
+  read(fd, result, file_size);
+  close(fd);
+  return RC::SUCCESS;
 }
 
-size_t writeDataColumn(char *src, int disk_id, size_t offset, size_t size, FILE *stream,
-                       bool *reset_ptr) {
+size_t writeDataColumn(char *src, int disk_id, size_t offset, size_t size, int fd, bool *reset_ptr) {
   if (*reset_ptr) {
-    fseek(stream, offset + size * disk_id, SEEK_SET); // 频繁 fseek 会带来很大开销吗？
+    lseek(fd, offset + size * disk_id, SEEK_SET); // 频繁 fseek 会带来很大开销吗？
     *reset_ptr = false;
   }
-  return fwrite(src, 1, size, stream);
+  return write(fd, src, size);
 }
 
 /* require: write to file end */
-size_t writeRemain(char *src, size_t offset, size_t size, FILE *stream) {
-  // fseek(stream, 0, SEEK_END);
-  fseek(stream, offset, SEEK_SET);
-  return fwrite(src, 1, size, stream);
+size_t writeRemain(char *src, size_t offset, size_t size, int fd) {
+  lseek(fd, offset, SEEK_SET);
+  return write(fd, src, size);
 }
 
 void readRemain(char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result) {
-  FILE *input;
+  int input;
   char file_path[PATH_MAX_LEN];
   if (disk_id == p - 1) {
     sprintf(file_path, "disk_%d/%s.%d", disk_id, filename, file_id);
-    input = fopen(file_path, "rb");
-    fseek(input, -remain_size, SEEK_END); // 倒数 remain_size
-    fread(result, remain_size, 1, input);
+    input = open(file_path, O_RDONLY);
+    lseek(input, -remain_size, SEEK_END); // 倒数 remain_size
+    read(input, result, remain_size);
   } else if (disk_id == p || disk_id == p + 1) {
     sprintf(file_path, "disk_%d/%s.%d.remaining", disk_id, filename, file_id);
-    input = fopen(file_path, "rb");
-    fread(result, remain_size, 1, input);
+    input = open(file_path, O_RDONLY);
+    read(input, result, remain_size);
   } else {
     LOG_ERROR("invalidly reading of remain block");
   }
-  fclose(input);
+  close(input);
 }
 
 void block_xor(char *left, char *right, char *result, size_t block_size) {
@@ -127,11 +131,14 @@ void read1(char *path, char *save_as) {
         }
       } else {
         // file exist but p is unknown
-        if (p == 0) { 
-          FILE *file;
-          file = fopen(file_path, "rb");
-          fread(&p, sizeof(int), 1, file);
-          fclose(file);
+        if (p == 0) {
+          int fd = open(file_path, O_RDONLY);
+          if (fd < 0) {
+            LOG_ERROR("error, can't open file");
+            exit(-1);
+          }
+          read(fd, &p, sizeof(int));
+          close(fd);
         }
 
         if (disk_id == p - 1) {
@@ -182,20 +189,13 @@ void read1(char *path, char *save_as) {
   } else { // when disk_{p-1} is failed...
     // try reading disk_{p}/<filename>.remaining
     sprintf(file_path, "disk_%d/%s.%d.remaining", p, filename, 0);
-    FILE *f = fopen(file_path, "rb");
-    size_t size = 0;
-    if (f) {
-      fseek(f, 0, SEEK_END);
-      remain_size = ftell(f);
-      fclose(f);
-    } else {
-      // perror("remaining file in disk_p is not exist");
+    if(stat(file_path, &st) == 0){
+      remain_size = st.st_size;
+    }
+    else{
       sprintf(file_path, "disk_%d/%s.%d.remaining", p + 1, filename, 0);
-      f = fopen(file_path, "rb");
-      if (f) {
-        fseek(f, 0, SEEK_END);
-        remain_size = ftell(f);
-        fclose(f);
+      if(stat(file_path, &st) == 0){
+        remain_size = st.st_size;
       }
       // else remain size = 0
     }
@@ -206,19 +206,13 @@ void read1(char *path, char *save_as) {
     last_remain_size = last_remain_size - last_file_size;
   } else { // when disk_{p-1} is failed...
     sprintf(file_path, "disk_%d/%s.%d.remaining", p, filename, file_per_disk-1);
-    FILE *f = fopen(file_path, "rb");
-    size_t size = 0;
-    if (f) {
-      fseek(f, 0, SEEK_END);
-      last_remain_size = ftell(f);
-      fclose(f);
-    } else {
+    if(stat(file_path, &st) == 0){
+      last_remain_size = st.st_size;
+    }
+    else{
       sprintf(file_path, "disk_%d/%s.%d.remaining", p + 1, filename, file_per_disk-1);
-      f = fopen(file_path, "rb");
-      if (f) {
-        fseek(f, 0, SEEK_END);
-        last_remain_size = ftell(f);
-        fclose(f);
+      if(stat(file_path, &st) == 0){
+        last_remain_size = st.st_size;
       }
     }
   }
@@ -230,29 +224,29 @@ void read1(char *path, char *save_as) {
     file_size, remain_size, file_per_disk, last_file_size, last_remain_size);
 
   /* start decoding */
-  FILE *output_stream = fopen(save_as, "wb");
-  if (!output_stream) {
+  int output_fd = open(save_as, O_CREAT | O_WRONLY);
+  if (output_fd < 0) {
     perror("Error in writing file");
     exit(1);
   }
 
   size_t write_file_offset = 0;
   for(int file_id = 0;file_id < file_per_disk;file_id++){
-    fseek(output_stream, write_file_offset, SEEK_SET);
+    lseek(output_fd, write_file_offset, SEEK_SET);
     if(file_id != file_per_disk-1){
-      decode(p, failed_num, failed, filename, save_as, file_size, remain_size, file_id, output_stream, &write_file_offset);
+      decode(p, failed_num, failed, filename, save_as, file_size, remain_size, file_id, output_fd, &write_file_offset);
     }
     else{
-      decode(p, failed_num, failed, filename, save_as, last_file_size, last_remain_size, file_id, output_stream, &write_file_offset);
+      decode(p, failed_num, failed, filename, save_as, last_file_size, last_remain_size, file_id, output_fd, &write_file_offset);
     }
   }
-  fclose(output_stream);
+  close(output_fd);
 }
 
 
 
 void decode(int p, int failed_num, int* failed, char* filename, char* save_as, 
-  size_t file_size, size_t remain_size, int file_id, FILE* output_stream, size_t* write_file_offset){
+  size_t file_size, size_t remain_size, int file_id, int output_fd, size_t* write_file_offset){
   
   size_t offset = *write_file_offset;
   size_t block_size = file_size / (p-1);
@@ -260,51 +254,51 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
     LOG_DEBUG("read directly\n");
     bool reset_ptr = false;
 
-    char *buffer = (char *)malloc(file_size);
+    char *buffer = new char[file_size];
     for (int i = 0; i < p; i++) {
       readDataColumn(filename, i, file_id, file_size, buffer);
-      writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+      writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
     }
     if (remain_size > 0) {
       if(remain_size <= file_size){
         readRemain(filename, p-1, file_id, p, remain_size, buffer);
-        writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+        writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
       }else{
-        char* remain_buffer = (char*) malloc(remain_size);
+        char* remain_buffer = new char[remain_size];
         readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-        writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-        free(remain_buffer);
+        writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+        delete[] remain_buffer;
       }
     }
 
-    free(buffer);
+    delete[] buffer;
   } else if (failed_num == 1) {
     if (failed[0] == p || failed[0] == p + 1) { // diagonal_parity or row_parity
       LOG_DEBUG("disk_%d failed, read directly\n", failed[0]);
       bool reset_ptr = false;
 
-      char *buffer = (char *)malloc(file_size);
+      char *buffer = new char[file_size];
       for (int i = 0; i < p; i++) {
         readDataColumn(filename, i, file_id, file_size, buffer);
-        writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+        writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
       }
       if (remain_size > 0) {
         if(remain_size <= file_size){
           readRemain(filename, p-1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
         }else{
-          char* remain_buffer = (char*) malloc(remain_size);
+          char* remain_buffer = new char[remain_size];
           readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-          free(remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
         }
       }
-      free(buffer);
+      delete[] buffer;
     } else { // repair some data column
       LOG_DEBUG("disk_%d failed, repair and read\n", failed[0]);
 
-      char *buffer = (char *)malloc(file_size);
-      char *missed_column = (char *)malloc(file_size);
+      char* buffer = new char[file_size];
+      char* missed_column = new char[file_size];
       memset(missed_column, 0, file_size);
 
       bool reset_ptr = false;
@@ -314,7 +308,7 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
           for (int j = 0; j < p - 1; j++) {
             block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
           }
-          writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
         } else {
           reset_ptr = true;
         }
@@ -324,21 +318,21 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
         block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
       }
       reset_ptr = true;
-      writeDataColumn(missed_column, failed[0], offset, file_size, output_stream, &reset_ptr);
+      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
 
       if (remain_size > 0) {
         if(remain_size <= file_size){
           readRemain(filename, p, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
         }else{
-          char* remain_buffer = (char*) malloc(remain_size);
+          char* remain_buffer = new char[remain_size];
           readRemain(filename, p, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-          free(remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
         }
       }
-      free(buffer);
-      free(missed_column);
+      delete[] buffer;
+      delete[] missed_column;
     }
   } else { // failed_num == 2
     if (failed[1] == p + 1) {
@@ -346,29 +340,29 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
         LOG_DEBUG("case 1: disk_%d and disk_%d failed, read directly\n", failed[0],
                failed[1]);
         bool reset_ptr = false;
-        char *buffer = (char *)malloc(file_size);
+        char* buffer = new char[file_size];
         for (int i = 0; i < p; i++) {
           readDataColumn(filename, i, file_id, file_size, buffer);
-          writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
         }
         if (remain_size > 0) {
           if(remain_size <= file_size){
             readRemain(filename, p-1, file_id, p, remain_size, buffer);
-            writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
           }else{
-            char* remain_buffer = (char*) malloc(remain_size);
+            char* remain_buffer = new char[remain_size];
             readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-            free(remain_buffer);
+            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+            delete[] remain_buffer;
           }
         }
-        free(buffer);
+        delete[] buffer;
       } else { // case 2: diagonal_parity and data column
         LOG_DEBUG("case 2: disk_%d and disk_%d failed, repair a data column and "
                "read\n",
                failed[0], failed[1]);
-        char *buffer = (char *)malloc(file_size);
-        char *missed_column = (char *)malloc(file_size);
+        char* buffer = new char[file_size];
+        char* missed_column = new char[file_size];
         memset(missed_column, 0, file_size);
 
         bool reset_ptr = false;
@@ -378,7 +372,7 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
             for (int j = 0; j < p - 1; j++) {
               block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
             }
-            writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+            writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
           } else {
             reset_ptr = true;
           }
@@ -388,28 +382,27 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
           block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
         }
         reset_ptr = true;
-        writeDataColumn(missed_column, failed[0], offset, file_size, output_stream, &reset_ptr);
+        writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
 
         if (remain_size > 0) {
           if(remain_size <= file_size){
             readRemain(filename, p, file_id, p, remain_size, buffer);
-            writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
           }else{
-            char* remain_buffer = (char*) malloc(remain_size);
+            char* remain_buffer = new char[remain_size];
             readRemain(filename, p, file_id, p, remain_size, remain_buffer);
-            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-            free(remain_buffer);
+            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+            delete[] remain_buffer;
           }
         }
-        free(buffer);
-        free(missed_column);
+        delete[] buffer;
+        delete[] missed_column;
       }
     } else if (failed[1] == p) { // case 3: row parity and data column
       LOG_DEBUG("case 3: disk_%d and disk_%d failed, repair a data column and read\n", failed[0], failed[1]);
 
-      char *buffer = (char *)malloc(file_size);
-      char *missed_column =
-          (char *)malloc(file_size + block_size); // length = p
+      char* buffer = new char[file_size];
+      char *missed_column = new char[file_size + block_size]; // length = p
       memset(missed_column, 0, file_size + block_size);
 
       bool reset_ptr = false;
@@ -417,7 +410,7 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
         if (i != failed[0]) {
           readDataColumn(filename, i, file_id, file_size, buffer);
           xoreq_diag(missed_column, buffer, failed[0], i, p, block_size);
-          writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
         } else {
           reset_ptr = true;
         }
@@ -431,28 +424,26 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
       }
 
       reset_ptr = true;
-      writeDataColumn(missed_column, failed[0], offset, file_size, output_stream, &reset_ptr);
+      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
       if (remain_size > 0) {
         if(remain_size <= file_size){
           readRemain(filename, p+1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
         }else{
-          char* remain_buffer = (char*) malloc(remain_size);
+          char* remain_buffer = new char[remain_size];
           readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-          free(remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
         }
       }
-      free(buffer);
-      free(missed_column);
+      delete[] buffer;
+      delete[] missed_column;
     } else { // case 4: two data column
       LOG_DEBUG("case 4: disk_%d and disk_%d failed, repair two data columns and read\n", failed[0], failed[1]);
 
-      char *buffer = (char *)malloc(file_size);
-      char *R = (char *)malloc(file_size +
-                               block_size); // 缺失的两列的同一行元素异或值；
-      char *D = (char *)malloc(
-          file_size + block_size); // 缺失的两列的同一对角线元素异或值；
+      char* buffer = new char[file_size];
+      char *R = new char[file_size+block_size]; // 缺失的两列的同一行元素异或值；
+      char *D = new char[file_size+block_size]; // 缺失的两列的同一对角线元素异或值；
       readDataColumn(filename, p, file_id, file_size, R); // 初始化 R[0:p-1] = row_parity
       readDataColumn(filename, p + 1, file_id, file_size,
                      D); // 初始化 D[0:p-1] = diagonal_parity
@@ -482,7 +473,7 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
             block_xoreq(R + k * block_size, buffer + k * block_size, block_size);
           }
           xoreq_diag(D, buffer, 0, i, p, block_size);
-          writeDataColumn(buffer, i, offset, file_size, output_stream, &reset_ptr);
+          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
         }
       }
 
@@ -490,7 +481,7 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
       // 按照计算顺序 missed_1 可以复用 R 的空间
       int m = p - 1 - (failed[1] - failed[0]); //  0 <= m <= p-2
       char *missed_1 = R;
-      char *missed_2 = (char *)malloc(file_size);
+      char *missed_2 = new char[file_size];
 
       do {
         char *D1 = D + (failed[1] + m) % p * block_size;
@@ -508,27 +499,27 @@ void decode(int p, int failed_num, int* failed, char* filename, char* save_as,
 
       // write two data columns to local file
       reset_ptr = true;
-      writeDataColumn(missed_1, failed[0], offset, file_size, output_stream, &reset_ptr);
+      writeDataColumn(missed_1, failed[0], offset, file_size, output_fd, &reset_ptr);
       reset_ptr = true;
-      writeDataColumn(missed_2, failed[1], offset, file_size, output_stream, &reset_ptr);
+      writeDataColumn(missed_2, failed[1], offset, file_size, output_fd, &reset_ptr);
 
       if (remain_size > 0) {
         if(remain_size <= file_size){
           readRemain(filename, p+1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_stream);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
         }else{
-          char* remain_buffer = (char*) malloc(remain_size);
+          char* remain_buffer = new char[remain_size];
           readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_stream);
-          free(remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
         }
       }
 
       // free space
-      free(buffer);
-      free(R);
-      free(D);
-      free(missed_2);
+      delete[] buffer;
+      delete[] R;
+      delete[] D;
+      delete[] missed_2;
     }
   }
 

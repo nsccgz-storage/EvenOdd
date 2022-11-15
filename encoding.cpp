@@ -305,7 +305,7 @@ RC encode(const char *path, int p) {
 
 #ifdef __USE_THREADPOOL__
   {
-    int thread_num = 4;
+    int thread_num = 16;
     ThreadPool pool(thread_num);
     std::vector<std::future<RC>> results;
     for (int i = 0; i < split_num; i++) {
