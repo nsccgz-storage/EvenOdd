@@ -1,8 +1,5 @@
 #!/bin/bash
 
-rm -rf build
-
-./compile.sh
 
 if [ $# != 2 ]; then
     echo "usage: bash correct.sh <file_size> <prime>"
@@ -15,7 +12,7 @@ index_2=0
 prime=$2
 
 #生成测试文件
-cd build
+cd ../build
 rm -rf disk*
 rm -rf test*
 
@@ -25,26 +22,23 @@ dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 #编译时间测试程序
 
 
-#测试write模块时间
-./time_check write ./test_data/data $prime
-rm -rf disk*
 
 #测试evenodd正确性
 ./evenodd write ./test_data/data $prime
 
 ## test no filed failed
-# ./evenodd read ./test_data/data ./test_data/data_read_0
-# result=`diff ./test_data/data ./test_data/data_read_0`
-# if [ -n "$result" ]
-# then
-#     echo "test no file failed" >> error_log.txt
-#     echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
-#     echo "$result" >> error_log.txt
-#     echo "===============================================" >> error_log.txt
-# else
-rm -rf ./test_data/data_read
-./time_check read ./test_data/data ./test_data/data_read
-# fi
+./evenodd read ./test_data/data ./test_data/data_read_0
+result=`diff ./test_data/data ./test_data/data_read_0`
+if [ -n "$result" ]
+then
+    echo "test no file failed" >> error_log.txt
+    echo "此时素数取值为:$prime  文件大小为: ${file_size}B" >> error_log.txt
+    echo "$result" >> error_log.txt
+    echo "===============================================" >> error_log.txt
+else
+    rm -rf ./test_data/data_read
+    ./time_check read ./test_data/data ./test_data/data_read
+fi
 
 
 ## test two files failed

@@ -1,5 +1,5 @@
 #coding:utf-8
-file_name_list = [0,2,4]
+file_name_list = [0,2,4,8,12,16]
 x_datas = []
 y_datas = []
 for idx in file_name_list:
@@ -26,15 +26,15 @@ from cProfile import label
 import matplotlib.pyplot as plt
 import numpy as np
 
-bar_width = 10
-index_first = 50 * np.arange(len(x_datas[0]))
+bar_width = 1
+index_first = (len(file_name_list) + 1) * bar_width *  np.arange(len(x_datas[0])) 
 
 plt.figure()
 
 for idx, yy in enumerate(y_datas):
     plt.bar(index_first + idx * bar_width, height=yy, width=bar_width, label='threadpool=' + str(file_name_list[idx]))
 plt.legend()
-plt.xticks(index_first + bar_width/2, x_datas[0])
+plt.xticks(index_first + bar_width * len(file_name_list) / 2, x_datas[0])
 plt.xlabel("file size: MiB")
 plt.ylabel('latency/s')
 plt.savefig('write_3.pdf')

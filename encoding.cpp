@@ -21,7 +21,7 @@
 #define PATH_MAX_LEN 512
 #endif
 
-// #define __USE_THREADPOOL__
+#define __USE_THREADPOOL__
 
 static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
 void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
