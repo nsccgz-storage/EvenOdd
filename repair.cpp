@@ -71,7 +71,7 @@ void getSize(const string& file, int p, int min_valid_disk, int file_per_disk, i
             }
         }
         else{
-            sprintf(file_name, "disk_%d/%s.%d.remaining", p, file.c_str(), 0);
+            sprintf(file_name, "disk_%d/%s.%d.remaining", d, file.c_str(), 0);
             if(stat(file_name, &st) == 0){
                 remain_size = st.st_size;
             }
@@ -79,7 +79,7 @@ void getSize(const string& file, int p, int min_valid_disk, int file_per_disk, i
                 remain_size = 0;
             }
 
-            sprintf(file_name, "disk_%d/%s.%d.remaining", p, file.c_str(), file_per_disk-1);
+            sprintf(file_name, "disk_%d/%s.%d.remaining", d, file.c_str(), file_per_disk-1);
             if(stat(file_name, &st) == 0){
                 last_remain_size = st.st_size;
             }
