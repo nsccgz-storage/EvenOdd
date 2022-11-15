@@ -37,6 +37,18 @@ void xoreq_diag(char *left, char *right, int left_id, int right_id, int p, size_
  */
 void xoreq_diagparity(char *left, char *diag, int left_id, int p, size_t block_size);
 
+void encodeRowDiagonalParity(const char* filename, char* buffer, int p, int file_id, size_t file_size,
+                             bool encodeR=false, char* row_parity=nullptr, bool encodeD=false, char* diagonal_parity=nullptr,
+                             bool isWrite=false, int output_fd=-1, size_t write_file_offset=0);
+
+void repairByRowParity(const char* filename, int* failed, char* buffer, char* missed_column, 
+    int p, int file_id, size_t file_size, bool isEnocde=false, char* diagonal_parity=nullptr,
+    bool isWrite=false, int output_fd=-1, size_t write_file_offset=0);
+
+void repairByDiagonalParity(const char* filename, int* failed, char* buffer, char* missed_column, 
+    int p, int file_id, size_t file_size, bool isEnocde=false, char* row_parity=nullptr,
+    bool isWrite=false, int output_fd=-1, size_t write_file_offset=0);
+
 void repairByRowDiagonalParity(const char* filename, int* failed, char* buffer, char* row_parity,
     char* diagonal_parity, int p, int file_id, size_t file_size, char** res1, char** res2, 
     bool isWrite=false, int output_fd=-1, size_t write_file_offset=0);

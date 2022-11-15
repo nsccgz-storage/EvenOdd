@@ -3,13 +3,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <vector>
-#include <string>
+
 
 #include "decoding.h"
+#include "repair.h"
 #include "log.h"
-
-using std::string;
-
 
 int getMinValidDisk(int num_erasures, int* disks){
     if(num_erasures == 1){
@@ -112,7 +110,7 @@ void getSize(const string& file, int p, int min_valid_disk, int file_per_disk, i
 }
 
 void repairToDisk(const char* filename, char* buffer, size_t size, int disk_id, int file_id, int p, 
-                  char* remain_buffer=nullptr, size_t remain_size=0){
+                  char* remain_buffer, size_t remain_size){
     char output_name[PATH_MAX_LEN];
     sprintf(output_name, "disk_%d/%s.%d", disk_id, filename, file_id);
     int fd = open(output_name, O_CREAT | O_WRONLY);
@@ -136,28 +134,126 @@ void repairFile(const string& filename, int failed_num, int* failed_disks, int p
     
     if(failed_num == 1){
         if(failed_disks[0] == p){
-            // encode row parity
+            /* encode row parity */
+            char* buffer = new char[file_size];
+            char* row_parity = new char[file_size + block_size];
+
+            encodeRowDiagonalParity(filename.c_str(), buffer, p, file_id, file_size, true, row_parity);
+            char* remain_buffer = new char[remain_size]; 
+            readRemain(filename.c_str(), p-1, file_id, p, remain_size, remain_buffer);
+            repairToDisk(filename.c_str(), row_parity, file_size, p, file_id, p, remain_buffer, remain_size);
+            
+            delete[] remain_buffer;
+            delete[] buffer;
+            delete[] row_parity;
         }
         else if(failed_disks[0] == p+1){
-            // encode diagonal parity
+            /* encode diagonal parity */
+            char* buffer = new char[file_size];
+            char* diagonal_parity = new char[file_size + block_size];
+
+            encodeRowDiagonalParity(filename.c_str(), buffer, p, file_id, file_size, false, nullptr, true, diagonal_parity);
+            char* remain_buffer = new char[remain_size]; 
+            readRemain(filename.c_str(), p-1, file_id, p, remain_size, remain_buffer);
+            repairToDisk(filename.c_str(), diagonal_parity, file_size, p+1, file_id, p, remain_buffer, remain_size);
+            
+            delete[] remain_buffer;
+            delete[] buffer;
+            delete[] diagonal_parity;
+        }else{
+            /* repair by row parity */
+            char* buffer = new char[file_size];
+            char *missed_column = new char[file_size + block_size]; // length = p
+     
+            repairByRowParity(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size);
+
+            if(failed_disks[0] == p-1){
+                char* remain_buffer = new char[remain_size]; 
+                readRemain(filename.c_str(), p, file_id, p, remain_size, remain_buffer);
+                repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p, remain_buffer, remain_size);
+                delete[] remain_buffer;
+            }
+            else {
+                repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p);
+            }
+
+            delete[] buffer;
+            delete[] missed_column;
         }
     }
     else{ // failed_num == 2
         if(failed_disks[1] == p+1){
             if(failed_disks[0] == p){
-                // encode row and diagonal parity
+                /* encode row and diagonal parity */
+                char* buffer = new char[file_size];
+                char* row_parity = new char[file_size + block_size];
+                char* diagonal_parity = new char[file_size + block_size];
+
+                encodeRowDiagonalParity(filename.c_str(), buffer, p, file_id, file_size, true, row_parity, true, diagonal_parity);
+                char* remain_buffer = new char[remain_size]; 
+                readRemain(filename.c_str(), p-1, file_id, p, remain_size, remain_buffer);
+                repairToDisk(filename.c_str(), row_parity, file_size, p, file_id, p, remain_buffer, remain_size);
+                repairToDisk(filename.c_str(), diagonal_parity, file_size, p+1, file_id, p, remain_buffer, remain_size);
+                
+                delete[] remain_buffer;
+                delete[] buffer;
+                delete[] row_parity;
+                delete[] diagonal_parity;
             }
             else{
-                // repair by row parity
-                // encode diagonlal parity
+                /* repair by row parity and enocde diagonal parity */
+                char* buffer = new char[file_size];
+                char *missed_column = new char[file_size + block_size]; // length = p
+
+                char* diagonal_parity = new char[file_size + block_size];
+                
+                repairByRowParity(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size, true, diagonal_parity);
+
+                char* remain_buffer = new char[remain_size]; 
+                readRemain(filename.c_str(), p, file_id, p, remain_size, remain_buffer);
+
+                if(failed_disks[0] == p-1){
+                    repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p, remain_buffer, remain_size);
+                }
+                else {
+                    repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p);
+                }
+                repairToDisk(filename.c_str(), diagonal_parity, file_size, p+1, file_id, p, remain_buffer, remain_size);
+                delete[] remain_buffer;
+
+                delete[] buffer;
+                delete[] missed_column;
+                delete[] diagonal_parity;
             }
         }
         else if(failed_disks[1] == p){
-            // repair by diagonal parity
-            // encode row parity
+            /* repair by diagonal parity and enocde row parity */
+            char* buffer = new char[file_size];
+            char *missed_column = new char[file_size + block_size]; // length = p
+
+            char* row_parity = new char[file_size + block_size];
+            
+            repairByDiagonalParity(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size, true, row_parity);
+
+            char* remain_buffer = new char[remain_size]; // <= p * (p-1)
+            readRemain(filename.c_str(), p+1, file_id, p, remain_size, remain_buffer);
+
+            if(failed_disks[0] == p-1){
+                repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p, remain_buffer, remain_size);
+            }
+            else {
+                repairToDisk(filename.c_str(), missed_column, file_size, failed_disks[0], file_id, p);
+            }
+            repairToDisk(filename.c_str(), row_parity, file_size, p, file_id, p, remain_buffer, remain_size);
+            delete[] remain_buffer;
+
+            delete[] buffer;
+            delete[] missed_column;
+            delete[] row_parity;
+            
         }
         else{
-            // repair by row and diagonal parity
+            /* repair by row and diagonal parity */
             char* buffer = new char[file_size];
             char *R = new char[file_size+block_size]; // 缺失的两列的同一行元素异或值；
             char *D = new char[file_size+block_size]; // 缺失的两列的同一对角线元素异或值；
