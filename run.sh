@@ -16,8 +16,6 @@ prime=$2
 
 #生成测试文件
 cd build
-rm -rf disk*
-rm -rf test*
 
 mkdir ./test_data
 dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
@@ -167,3 +165,6 @@ mv _disk_$index_1 disk_$index_1
 mv _disk_$index_2 disk_$index_2
 rm -rf ./test_data/data_read
 echo ====================================
+
+rm -rf disk*
+rm -rf test*

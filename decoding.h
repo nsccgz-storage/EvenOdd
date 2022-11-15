@@ -9,12 +9,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-void readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result);
+RC readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result);
 
-size_t writeDataColumn(char *src, int disk_id, size_t offset, size_t size, FILE *stream,
-                       bool *reset_ptr);
+size_t writeDataColumn(char *src, int disk_id, size_t offset, size_t size, int fd, bool *reset_ptr);
 
-size_t writeRemain(char *src, size_t offset, size_t size, FILE *stream);
+size_t writeRemain(char *src, size_t offset, size_t size, int fd);
 
 void readRemain(char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result);
 
@@ -35,7 +34,7 @@ void xoreq_diag(char *left, char *right, int left_id, int right_id, int p, size_
 void xoreq_diagparity(char *left, char *diag, int left_id, int p, size_t block_size);
 
 void decode(int p, int failed_num, int* failed, char* filename, char* save_as, 
-  size_t file_size, size_t remain_size, int file_id, FILE* output, size_t* write_file_offset);
+  size_t file_size, size_t remain_size, int file_id, int output_fd, size_t* write_file_offset);
 
 /*
  * 暂时假设每个 column 可以直接读入内存
