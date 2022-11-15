@@ -9,13 +9,17 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-RC readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result);
+#ifndef PATH_MAX_LEN
+#define PATH_MAX_LEN 512
+#endif
+
+RC readDataColumn(const char *filename, int disk_id, int file_id, size_t file_size, char *result);
 
 size_t writeDataColumn(char *src, int disk_id, size_t offset, size_t size, int fd, bool *reset_ptr);
 
 size_t writeRemain(char *src, size_t offset, size_t size, int fd);
 
-void readRemain(char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result);
+void readRemain(const char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result);
 
 void block_xor(char *left, char *right, char *result, size_t block_size);
 
@@ -32,6 +36,10 @@ void xoreq_diag(char *left, char *right, int left_id, int right_id, int p, size_
  * 注意：left 的长度为 p*block_size
  */
 void xoreq_diagparity(char *left, char *diag, int left_id, int p, size_t block_size);
+
+void repairByRowDiagonalParity(const char* filename, int* failed, char* buffer, char* row_parity,
+    char* diagonal_parity, int p, int file_id, size_t file_size, char** res1, char** res2, 
+    bool isWrite=false, int output_fd=-1, size_t write_file_offset=0);
 
 void decode(int p, int failed_num, int* failed, char* filename, char* save_as, 
   size_t file_size, size_t remain_size, int file_id, int output_fd, size_t* write_file_offset);

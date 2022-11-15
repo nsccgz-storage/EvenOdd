@@ -1,6 +1,7 @@
 #include "decoding.h"
 #include "encoding.h"
 #include "log.h"
+#include "repair.h"
 
 #include <stdio.h>
 void usage() {
@@ -42,15 +43,23 @@ int main(int argc, char **argv) {
     read1(argv[2], argv[3]);
 
   } else if (strcmp(op, "repair") == 0) {
-    /*
-     * Please repair failed disks. The number of failures is specified by
-     * "num_erasures", and the index of disks are provided in the command
-     * line parameters.
-     * For example: Suppose "number_erasures" is 2, and the indices of
-     * failed disks are "0" and "1". After the repair operation, the data
-     * splits in folder "disk_0" and "disk_1" should be repaired.
-     */
+    if(argc < 3){
+      usage();
+      return -1;
+    }
+    int num_erasures = atoi(argv[2]);
+    if(num_erasures < 0 || argc != num_erasures + 3){
+      usage();
+      return -1;
+    }
+    if(num_erasures > 2){
+      printf("Too many corruptions!");
+      return -1;
+    }
+    int disks[2];
+    for(int i = 0;i < num_erasures;i++)disks[i] = atoi(argv[i+3]); // assert disk_id is valid number
 
+    repair(num_erasures, disks);
   } else {
     printf("Non-supported operations!\n");
   }

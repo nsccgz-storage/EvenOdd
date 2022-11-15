@@ -10,6 +10,8 @@ target_sources(evenoddlib
     "decoding.cpp"
     "encoding.h"
     "encoding.cpp"
+    "repair.h"
+    "repair.cpp"
 
     "log.h"
     "log.cpp"
