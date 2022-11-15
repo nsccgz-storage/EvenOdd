@@ -17,6 +17,7 @@ target_sources(evenoddlib
     "log.cpp"
 
     "util.h"
+    "util/ThreadPool.h"
 )
 
 add_executable(evenodd "evenodd.cpp")

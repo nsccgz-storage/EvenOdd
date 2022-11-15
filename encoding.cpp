@@ -21,10 +21,10 @@
 #define PATH_MAX_LEN 512
 #endif
 
+// #define __USE_THREADPOOL__
+
 static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
-void setBufferSize(off_t buffer_size_){
-  MAX_BUFFER_SIZE = buffer_size_;
-}
+void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
 /*
  * caculte the xor value and save to lhs
  */
@@ -190,7 +190,7 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
 }
 
 RC thread_partEncode(int fd, off_t offset, off_t encode_size,
-              const char *file_name, int p, int _idx) {
+                     const char *file_name, int p, int _idx) {
 
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
@@ -289,32 +289,32 @@ RC encode(const char *path, int p) {
   char save_filename[PATH_MAX_LEN];
 
   int split_num = file_size / (MAX_BUFFER_SIZE * p);
-  // for (int i = 0; i < split_num; i++) {
-  //   rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), save_filename, p);
-  //   if (rc != RC::SUCCESS) {
-  //     close(fd);
-  //     LOG_ERROR("error,");
-  //     return rc;
-  //   }
-  // }
+
+#ifndef __USE_THREADPOOL__
+  for (int i = 0; i < split_num; i++) {
+    sprintf(save_filename, "%s.%d", filename, i);
+    rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+                    save_filename, p);
+    if (rc != RC::SUCCESS) {
+      close(fd);
+      LOG_ERROR("error,");
+      return rc;
+    }
+  }
+#endif
+
+#ifdef __USE_THREADPOOL__
   {
     int thread_num = 4;
     ThreadPool pool(thread_num);
     std::vector<std::future<RC>> results;
     for (int i = 0; i < split_num; i++) {
       // sprintf(save_filename, "%s.%d", filename, i);
-      results.emplace_back(
-        pool.enqueue(thread_partEncode, fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), filename, p, i)
-      );
-
-      // rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p), save_filename, p);
-      //   if (rc != RC::SUCCESS) {
-      //   close(fd);
-      //   LOG_ERROR("error,");
-      //   return rc;
-      // }
+      results.emplace_back(pool.enqueue(thread_partEncode, fd,
+                                        i * (MAX_BUFFER_SIZE * p),
+                                        (MAX_BUFFER_SIZE * p), filename, p, i));
     }
-    for(auto && result: results){
+    for (auto &&result : results) {
       rc = result.get();
       // LOG_DEBUG("%d", rc);
       if (rc != RC::SUCCESS) {
@@ -324,6 +324,8 @@ RC encode(const char *path, int p) {
       }
     }
   }
+#endif
+
   off_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
   if (last_part_size != 0) {
     // if (split_num == 0) {
