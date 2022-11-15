@@ -20,18 +20,28 @@ cd build
 mkdir ./test_data
 dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 
-#编译时间测试程序
+
 
 
 #测试write模块时间
 ./time_check write ./test_data/data $prime
 rm -rf disk*
 
-#测试evenodd正确性
-./evenodd write ./test_data/data $prime
+#测试encode正确性
+mkdir ../perf图
+sudo perf record -o out.data -a -g ./evenodd write ./test_data/data $prime
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/write.svg
+rm -rf out.*
+
 
 ## test no filed failed
-./evenodd read ./test_data/data ./test_data/data_read_0
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_0
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_0.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_0`
 if [ -n "$result" ]
 then
@@ -52,7 +62,11 @@ let "index_1=prime"
 let "index_2=prime+1"
 mv disk_$index_1 _disk_$index_1
 mv disk_$index_2 _disk_$index_2
-./evenodd read ./test_data/data ./test_data/data_read_21
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_21
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_21.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_21`
 if [ -n "$result" ]
 then
@@ -75,7 +89,11 @@ let "index_1=prime-2"
 let "index_2=prime"
 mv disk_$index_1 _disk_$index_1
 mv disk_$index_2 _disk_$index_2
-./evenodd read ./test_data/data ./test_data/data_read_22
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_22
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_22.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_22`
 if [ -n "$result" ]
 then
@@ -98,7 +116,11 @@ let "index_1=prime-1"
 let "index_2=prime+1"
 mv disk_$index_1 _disk_$index_1
 mv disk_$index_2 _disk_$index_2
-./evenodd read ./test_data/data ./test_data/data_read_23
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_23
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_23.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_23`
 if [ -n "$result" ]
 then
@@ -122,7 +144,11 @@ let "index_1=prime-2"
 let "index_2=prime-1"
 mv disk_$index_1 _disk_$index_1
 mv disk_$index_2 _disk_$index_2
-./evenodd read ./test_data/data ./test_data/data_read_24
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_24
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_24.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_24`
 if [ -n "$result" ]
 then
@@ -147,7 +173,11 @@ let "index_1=prime-2"
 let "index_2=prime-3"
 mv disk_$index_1 _disk_$index_1
 mv disk_$index_2 _disk_$index_2
-./evenodd read ./test_data/data ./test_data/data_read_25
+sudo perf record -o out.data -a -g ./evenodd read ./test_data/data ./test_data/data_read_25
+sudo perf script -i out.data > out.perf
+../FlameGraph/stackcollapse-perf.pl out.perf > out.floded
+../FlameGraph/flamegraph.pl out.floded > ../perf图/read_25.svg
+rm -rf out.*
 result=`diff ./test_data/data ./test_data/data_read_25`
 if [ -n "$result" ]
 then
