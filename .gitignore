@@ -10,3 +10,5 @@ evenodd
 build/
 !/test/*.sh
 !/test/*.py
+
+perf图/
