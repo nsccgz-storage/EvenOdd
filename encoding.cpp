@@ -22,6 +22,7 @@
 #endif
 
 // #define __USE_THREADPOOL__
+#define THREAD_NUM 12
 
 static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
 void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
@@ -305,7 +306,7 @@ RC encode(const char *path, int p) {
 
 #ifdef __USE_THREADPOOL__
   {
-    int thread_num = 4;
+    int thread_num = THREAD_NUM;
     ThreadPool pool(thread_num);
     std::vector<std::future<RC>> results;
     for (int i = 0; i < split_num; i++) {
