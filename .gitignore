@@ -12,3 +12,5 @@ build/
 !/test/*.py
 
 perf图/
+
+FlameGraph/
