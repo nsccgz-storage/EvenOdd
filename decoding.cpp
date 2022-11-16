@@ -9,6 +9,77 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+RC readBlock(const char *filename, int disk_id, int file_id, int block_id, size_t block_size, char *result){
+  char file_path[PATH_MAX_LEN];
+  sprintf(file_path, "disk_%d/%s.%d", disk_id, filename, file_id);
+  int fd = open(file_path, O_RDONLY);
+  if (fd < 0) {
+    LOG_ERROR("error, can't open file");
+    return RC::FILE_NOT_EXIST;
+  }
+  lseek(fd, sizeof(int) + block_id * block_size, SEEK_SET);
+  read(fd, result, block_size);
+  close(fd);
+  return RC::SUCCESS;
+}
+
+/*
+ * 尝试减少 repair 时读文件的大小，但无法优化 read 
+ * 原理：混合使用行校验列和对角校验列来修复，可以复用一些数据块
+ * @param buffer: size = file_size
+ * @param missed_column: size = file_size + block_size;
+ */
+void repairMixed(const char* filename, int* failed, char* buffer, char* missed_column, 
+                 int p, int file_id, size_t file_size){
+  // (p-1)/2 部分进行 row parity
+  size_t block_size = file_size / (p-1);
+  memset(missed_column, 0, file_size + block_size);
+
+  int mid = (p - 1) / 2;
+
+  for (int i = 0; i < p; i++) {
+    if (i != failed[0]) {
+      readDataColumn(filename, i, file_id, mid * block_size, buffer);
+
+      for (int j = 0; j < mid; j++) {
+        block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
+
+        int pos = (j + i - failed[0] + p) % p;
+        if(mid <= pos && pos <= p-1){
+          block_xoreq(missed_column + pos * block_size, buffer + j * block_size, block_size);
+        }
+      }
+
+      for(int j = mid; j < p-1;j++){
+        int pos = (j + i - failed[0] + p) % p;
+        if(mid <= pos && pos <= p-1){
+          readBlock(filename, i, file_id, j, block_size, buffer + j * block_size);
+          block_xoreq(missed_column + pos * block_size, buffer + j * block_size, block_size);
+        }
+      }
+    }
+  }
+
+  // read row parity
+  readDataColumn(filename, p, file_id, mid * block_size, buffer);
+  for (int j = 0; j < mid; j++) {
+    block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
+  }
+  // read diagonal parity
+  for(int j = 0;j < p-1;j++){
+    int pos = (j - failed[0] + p) % p;
+    if(mid <= pos && pos <= p-1){
+      readBlock(filename, p + 1, file_id, j, block_size, buffer + j * block_size);
+      block_xoreq(missed_column + pos * block_size, buffer + j * block_size, block_size);
+    }
+  }
+
+  char* S = missed_column + (p - 1) * block_size;
+  for(int j = mid;j < p-1;j++){
+    block_xoreq(missed_column + j * block_size, S, block_size);
+  }
+}
+
 RC readDataColumn(const char *filename, int disk_id, int file_id, size_t file_size, char *result) {
   char file_path[PATH_MAX_LEN];
   sprintf(file_path, "disk_%d/%s.%d", disk_id, filename, file_id);
@@ -69,7 +140,7 @@ void block_xoreq(char *left, char *right, size_t block_size) {
  * 两个数据列`同一对角线元素`进行异或操作，结果保留在 left 中
  * 注意：left 的长度为 p*block_size
  */
-void xoreq_diag(char *left, char *right, int left_id, int right_id, int p, size_t block_size) {
+inline void xoreq_diag(char *left, char *right, int left_id, int right_id, int p, size_t block_size) {
   for (int i = 0; i < p - 1; i++) {
     int x = (right_id + i - left_id + p) % p;
     block_xoreq(left + x * block_size, right + i * block_size, block_size);

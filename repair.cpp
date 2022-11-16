@@ -164,8 +164,10 @@ void repairFile(const string& filename, int failed_num, int* failed_disks, int p
             /* repair by row parity */
             char* buffer = new char[file_size];
             char *missed_column = new char[file_size + block_size]; // length = p
+
+            repairMixed(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size);
      
-            repairByRowParity(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size);
+            // repairByRowParity(filename.c_str(), failed_disks, buffer, missed_column, p, file_id, file_size);
 
             if(failed_disks[0] == p-1){
                 char* remain_buffer = new char[remain_size]; 
