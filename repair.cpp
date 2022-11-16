@@ -113,7 +113,7 @@ void repairToDisk(const char* filename, char* buffer, size_t size, int disk_id, 
                   char* remain_buffer, size_t remain_size){
     char output_name[PATH_MAX_LEN];
     sprintf(output_name, "disk_%d/%s.%d", disk_id, filename, file_id);
-    int fd = open(output_name, O_CREAT | O_WRONLY);
+    int fd = open(output_name, O_CREAT | O_WRONLY, S_IRWXU);
     write(fd, &p, sizeof(int));
     write(fd, buffer, size);
     if(disk_id == p-1){
@@ -123,7 +123,7 @@ void repairToDisk(const char* filename, char* buffer, size_t size, int disk_id, 
 
     if(disk_id == p || disk_id == p+1){
         sprintf(output_name, "disk_%d/%s.%d.remaining", disk_id, filename, file_id);
-        fd = open(output_name, O_CREAT | O_WRONLY);
+        fd = open(output_name, O_CREAT | O_WRONLY, S_IRWXU);
         write(fd, remain_buffer, remain_size);
         close(fd);
     }
