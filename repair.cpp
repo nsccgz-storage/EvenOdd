@@ -363,9 +363,9 @@ void repair(int num_erasures, int *disks) {
     size_t file_size, remain_size, last_file_size, last_remain_size;
     getSize(file, p, min_valid_disk, file_per_disk, num_erasures, disks,
             file_size, remain_size, last_file_size, last_remain_size);
-    printf("file_size = %ld, remain size = %ld, last file size = %ld, last "
-           "remain size = %ld\n",
-           file_size, remain_size, last_file_size, last_remain_size);
+    // printf("file_size = %ld, remain size = %ld, last file size = %ld, last "
+    //        "remain size = %ld\n",
+    //        file_size, remain_size, last_file_size, last_remain_size);
 
     for (int i = 0; i < file_per_disk; i++) {
       // TODO: last i should last_file_size and last_remain_size

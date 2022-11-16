@@ -14,7 +14,7 @@ int __log_output__(LOG_LEVEL level, const char *file_name, int line,
   vsnprintf(msg, sizeof(msg), f, args);
   va_end(args);
 
-  if (level >= LOG_LEVEL::LOG_LEVEL_ERR && level <= CUR_LEVEL) {
+  if (LOG_LEVEL::LOG_LEVEL_ERR <= level && level <= CUR_LEVEL) {
     printf("%s : in file: %s:%d:\n", msg, file_name, line);
   }
   return 0;
