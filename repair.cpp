@@ -110,7 +110,7 @@ void repairToDisk(const char *filename, char *buffer, size_t size, int disk_id,
                   int file_id, int p, char *remain_buffer, size_t remain_size) {
   char output_name[PATH_MAX_LEN];
   sprintf(output_name, "disk_%d/%s.%d", disk_id, filename, file_id);
-  int fd = open(output_name, O_CREAT | O_WRONLY);
+  int fd = open(output_name, O_CREAT | O_WRONLY, S_IRWXU);
   write(fd, &p, sizeof(int));
   write(fd, buffer, size);
   if (disk_id == p - 1) {
@@ -120,7 +120,7 @@ void repairToDisk(const char *filename, char *buffer, size_t size, int disk_id,
 
   if (disk_id == p || disk_id == p + 1) {
     sprintf(output_name, "disk_%d/%s.%d.remaining", disk_id, filename, file_id);
-    fd = open(output_name, O_CREAT | O_WRONLY);
+    fd = open(output_name, O_CREAT | O_WRONLY, S_IRWXU);
     write(fd, remain_buffer, remain_size);
     close(fd);
   }
@@ -366,9 +366,9 @@ void repair(int num_erasures, int *disks) {
     size_t file_size, remain_size, last_file_size, last_remain_size;
     getSize(file, p, min_valid_disk, file_per_disk, num_erasures, disks,
             file_size, remain_size, last_file_size, last_remain_size);
-    printf("file_size = %ld, remain size = %ld, last file size = %ld, last "
-           "remain size = %ld\n",
-           file_size, remain_size, last_file_size, last_remain_size);
+    // printf("file_size = %ld, remain size = %ld, last file size = %ld, last "
+    //        "remain size = %ld\n",
+    //        file_size, remain_size, last_file_size, last_remain_size);
 
     for (int i = 0; i < file_per_disk; i++) {
       // TODO: last i should last_file_size and last_remain_size
