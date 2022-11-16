@@ -9,11 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#ifndef PATH_MAX_LEN
-#define PATH_MAX_LEN 512
-#endif
-
-RC readDataColumn(char *filename, int disk_id, int file_id, size_t file_size, char *result) {
+RC readDataColumn(const char *filename, int disk_id, int file_id, size_t file_size, char *result) {
   char file_path[PATH_MAX_LEN];
   sprintf(file_path, "disk_%d/%s.%d", disk_id, filename, file_id);
   int fd = open(file_path, O_RDONLY);
@@ -41,7 +37,7 @@ size_t writeRemain(char *src, size_t offset, size_t size, int fd) {
   return write(fd, src, size);
 }
 
-void readRemain(char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result) {
+void readRemain(const char *filename, int disk_id, int file_id, int p, size_t remain_size, char *result) {
   int input;
   char file_path[PATH_MAX_LEN];
   if (disk_id == p - 1) {
@@ -88,9 +84,389 @@ void xoreq_diagparity(char *left, char *diag, int left_id, int p, size_t block_s
   xoreq_diag(left, diag, left_id, 0, p, block_size);
 }
 
+void encodeRowDiagonalParity(const char* filename, char* buffer, int p, int file_id, size_t file_size,
+                             bool encodeR, char* row_parity, bool encodeD, char* diagonal_parity,
+                             bool isWrite, int output_fd, size_t write_file_offset){
+  size_t block_size = file_size / (p-1);
+  bool reset_ptr = false;
+  if(encodeR){
+    memset(row_parity, 0, file_size+block_size);
+  }
+  if(encodeD){
+    memset(diagonal_parity, 0, file_size+block_size);
+  }
+
+  for (int i = 0; i < p; i++) {
+    readDataColumn(filename, i, file_id, file_size, buffer);
+    if(encodeR){
+      for (int j = 0; j < p - 1; j++) {
+        block_xoreq(row_parity + j * block_size, buffer + j * block_size, block_size);
+      }
+    }
+    if(encodeD){
+      xoreq_diag(diagonal_parity, buffer, 0, i, p, block_size);
+    }
+    if(isWrite){
+      writeDataColumn(buffer, i, write_file_offset, file_size, output_fd, &reset_ptr);
+    }
+  }
+
+  if(encodeD){
+    char* S = diagonal_parity + (p - 1) * block_size;
+    for (int i = 0; i < p - 1; i++) {
+      block_xoreq(diagonal_parity + i * block_size, S, block_size);
+    }
+  }
+}
+
 /*
- * 暂时假设每个 column 可以直接读入内存
+ * @param isEnocde: whether to encode row parity
+ * @param diagonal_parity: valid when isEnocde == true, require length = p * block_size
  */
+void repairByRowParity(const char* filename, int* failed, char* buffer, char* missed_column, 
+                       int p, int file_id, size_t file_size, bool isEnocde, char* diagonal_parity, 
+                       bool isWrite, int output_fd, size_t write_file_offset){
+  
+  size_t block_size = file_size / (p-1);
+  memset(missed_column, 0, file_size + block_size);
+  bool reset_ptr = false;
+  if(isEnocde){
+    memset(diagonal_parity, 0, file_size+block_size);
+  }
+
+  for (int i = 0; i < p; i++) {
+    if (i != failed[0]) {
+      readDataColumn(filename, i, file_id, file_size, buffer);
+      for (int j = 0; j < p - 1; j++) {
+        block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
+      }
+      if(isEnocde){
+        xoreq_diag(diagonal_parity, buffer, 0, i, p, block_size);
+      }
+      if(isWrite){
+        writeDataColumn(buffer, i, write_file_offset, file_size, output_fd, &reset_ptr);
+      }
+    } 
+    else {
+      reset_ptr = true;
+    }
+  }
+
+  readDataColumn(filename, p, file_id, file_size, buffer);
+  for (int j = 0; j < p - 1; j++) {
+    block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
+  }
+
+  if(isEnocde){
+    xoreq_diag(diagonal_parity, missed_column, 0, failed[0], p, block_size);
+    char* S = diagonal_parity + (p - 1) * block_size;
+    for (int i = 0; i < p - 1; i++) {
+      block_xoreq(diagonal_parity + i * block_size, S, block_size);
+    }
+  }
+}
+
+/*
+ * @param isEnocde: whether to encode row parity
+ * @param row_parity: valid when isEnocde == true, require length = p * block_size
+ */
+void repairByDiagonalParity(const char* filename, int* failed, char* buffer, char* missed_column, 
+                            int p, int file_id, size_t file_size, bool isEnocde, char* row_parity, 
+                            bool isWrite, int output_fd, size_t write_file_offset){
+  
+  size_t block_size = file_size / (p-1);
+  memset(missed_column, 0, file_size + block_size);
+  bool reset_ptr = false;
+  if(isEnocde){
+    memset(row_parity, 0, file_size+block_size);
+  }
+
+  for (int i = 0; i < p; i++) {
+    if (i != failed[0]) {
+      readDataColumn(filename, i, file_id, file_size, buffer);
+      xoreq_diag(missed_column, buffer, failed[0], i, p, block_size);
+      if(isEnocde){
+        for (int j = 0; j < p - 1; j++) {
+          block_xoreq(row_parity + j * block_size, buffer + j * block_size, block_size);
+        }
+      }
+      if(isWrite){
+        writeDataColumn(buffer, i, write_file_offset, file_size, output_fd, &reset_ptr);
+      }
+    } 
+    else {
+      reset_ptr = true;
+    }
+  }
+
+  readDataColumn(filename, p + 1, file_id, file_size, buffer);
+  xoreq_diagparity(missed_column, buffer, failed[0], p, block_size);
+  char *S = missed_column + (p - 1) * block_size;
+  for (int i = 0; i < p - 1; i++) {
+    block_xoreq(missed_column + i * block_size, S, block_size);
+  }
+
+  if(isEnocde){
+    for(int j = 0;j < p - 1;j++){
+      block_xoreq(row_parity + j * block_size, missed_column + j * block_size, block_size);
+    }
+  }
+}
+
+/*
+ * @param failed: int[2], the two failed disk id
+ * @param buffer: buffer for store data column, require length = file_size = (p-1) * block_size
+ * @param row_parity: require length = p * block_size
+ * @param diagonal parity: require length = p * block_size
+ * (return value) res1 & res2: two data columns to be repair
+ */
+void repairByRowDiagonalParity(const char* filename, int* failed, char* buffer, char* row_parity,
+    char* diagonal_parity, int p, int file_id, size_t file_size, char** res1, char** res2, 
+    bool isWrite, int output_fd, size_t write_file_offset){
+  
+  size_t block_size = file_size / (p-1);
+  char* R = row_parity;
+  char* D = diagonal_parity;
+  
+  memset(R + (p - 1) * block_size, 0, block_size); // R[p-1] = 0
+  char *S = D + (p - 1) * block_size; // 闲置空间拿出来放置 S
+  memset(S, 0, block_size);           // S = 0
+
+  // calculate S
+  for (int k = 0; k < p - 1; k++) {
+    block_xoreq(S, R + k * block_size, block_size);
+    block_xoreq(S, D + k * block_size, block_size);
+  }
+
+  // D[k] ^= S，此时 D[p-1] 就无需与 S 异或
+  for (int k = 0; k < p - 1; k++) {
+    block_xoreq(D + k * block_size, S, block_size);
+  }
+
+  // calculate R and D, and write existing data column
+  bool reset_ptr = false;
+  for (int i = 0; i < p; i++) {
+    if (i == failed[0] || i == failed[1]) {
+      reset_ptr = true;
+    } 
+    else {
+      readDataColumn(filename, i, file_id, file_size, buffer);
+      for (int k = 0; k < p - 1; k++) {
+        block_xoreq(R + k * block_size, buffer + k * block_size, block_size);
+      }
+      xoreq_diag(D, buffer, 0, i, p, block_size);
+      if(isWrite){
+        writeDataColumn(buffer, i, write_file_offset, file_size, output_fd, &reset_ptr);
+      }
+    }
+  }
+
+  // calculate the two missed data columns
+  // 按照计算顺序 missed_1 可以复用 R 的空间
+  int m = p - 1 - (failed[1] - failed[0]); //  0 <= m <= p-2
+  char *missed_1 = R;
+  char *missed_2 = new char[file_size]; // TODO: need to free space outside this function
+
+  do {
+    char *D1 = D + (failed[1] + m) % p * block_size;
+    char *R1 = R + m * block_size;
+    char *cur_1 = missed_1 + m * block_size;
+    char *cur_2 = missed_2 + m * block_size;
+
+    // 第一次进入循环时其实执行 D1 ^ R[p-1] =
+    // missed_2[m]，因此之前需要初始化 R[p-1] = 0
+    block_xor(D1, missed_1 + (m + failed[1] - failed[0]) % p * block_size, cur_2, block_size);
+    block_xor(R1, cur_2, cur_1, block_size);
+    m = (p + m - (failed[1] - failed[0])) %
+        p; // p 为质数则可以保证p次迭代不重不漏地遍历[0, p-1]的每个整数
+  } while (m != p - 1);
+
+  *res1 = missed_1;
+  *res2 = missed_2;
+}
+
+void decode(int p, int failed_num, int* failed, char* filename, char* save_as, 
+  size_t file_size, size_t remain_size, int file_id, int output_fd, size_t* write_file_offset){
+  
+  size_t offset = *write_file_offset;
+  size_t block_size = file_size / (p-1);
+  if (failed_num == 0) {
+    LOG_DEBUG("read directly\n");
+
+    char* buffer = new char[file_size];
+
+    encodeRowDiagonalParity(filename, buffer, p, file_id, file_size, false, nullptr, false, nullptr, true, output_fd, offset);
+
+    if (remain_size > 0) {
+      if(remain_size <= file_size){
+        readRemain(filename, p-1, file_id, p, remain_size, buffer);
+        writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+      }else{
+        char* remain_buffer = new char[remain_size];
+        readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
+        writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+        delete[] remain_buffer;
+      }
+    }
+    delete[] buffer;
+  } else if (failed_num == 1) {
+    if (failed[0] == p || failed[0] == p + 1) { // diagonal_parity or row_parity
+      LOG_DEBUG("disk_%d failed, read directly\n", failed[0]);
+      char* buffer = new char[file_size];
+
+      encodeRowDiagonalParity(filename, buffer, p, file_id, file_size, false, nullptr, false, nullptr, true, output_fd, offset);
+
+      if (remain_size > 0) {
+        if(remain_size <= file_size){
+          readRemain(filename, p-1, file_id, p, remain_size, buffer);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+        }else{
+          char* remain_buffer = new char[remain_size];
+          readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
+        }
+      }
+      delete[] buffer;
+    } else { // repair some data column
+      LOG_DEBUG("disk_%d failed, repair and read\n", failed[0]);
+
+      char* buffer = new char[file_size];
+      char *missed_column = new char[file_size + block_size];
+      
+      repairByRowParity(filename, failed, buffer, missed_column, p, file_id, file_size, false, nullptr, true, output_fd, offset);
+      bool reset_ptr = true;
+      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
+
+      if (remain_size > 0) {
+        if(remain_size <= file_size){
+          readRemain(filename, p, file_id, p, remain_size, buffer);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+        }else{
+          char* remain_buffer = new char[remain_size];
+          readRemain(filename, p, file_id, p, remain_size, remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
+        }
+      }
+      delete[] buffer;
+      delete[] missed_column;
+    }
+  } else { // failed_num == 2
+    if (failed[1] == p + 1) {
+      if (failed[0] == p) { // case 1: diagonal_parity and row_parity
+        LOG_DEBUG("case 1: disk_%d and disk_%d failed, read directly\n", failed[0],
+               failed[1]);
+        char* buffer = new char[file_size];
+
+        encodeRowDiagonalParity(filename, buffer, p, file_id, file_size, false, nullptr, false, nullptr, true, output_fd, offset);
+
+        if (remain_size > 0) {
+          if(remain_size <= file_size){
+            readRemain(filename, p-1, file_id, p, remain_size, buffer);
+            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+          }else{
+            char* remain_buffer = new char[remain_size];
+            readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
+            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+            delete[] remain_buffer;
+          }
+        }
+        delete[] buffer;
+      } else { // case 2: diagonal_parity and data column
+        LOG_DEBUG("case 2: disk_%d and disk_%d failed, repair a data column and "
+               "read\n",
+               failed[0], failed[1]);
+        char* buffer = new char[file_size];
+        char *missed_column = new char[file_size + block_size];
+        
+        repairByRowParity(filename, failed, buffer, missed_column, p, file_id, file_size, false, nullptr, true, output_fd, offset);
+        bool reset_ptr = true;
+        writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
+
+        if (remain_size > 0) {
+          if(remain_size <= file_size){
+            readRemain(filename, p, file_id, p, remain_size, buffer);
+            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+          }else{
+            char* remain_buffer = new char[remain_size];
+            readRemain(filename, p, file_id, p, remain_size, remain_buffer);
+            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+            delete[] remain_buffer;
+          }
+        }
+        delete[] buffer;
+        delete[] missed_column;
+      }
+    } 
+    else if (failed[1] == p) { // case 3: row parity and data column
+      LOG_DEBUG("case 3: disk_%d and disk_%d failed, repair a data column and read\n", failed[0], failed[1]);
+
+      char* buffer = new char[file_size];
+      char *missed_column = new char[file_size + block_size]; // length = p
+
+      repairByDiagonalParity(filename, failed, buffer, missed_column, p, file_id, file_size, false, nullptr, true, output_fd, offset);
+      
+      bool reset_ptr = true;
+      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
+      
+      if (remain_size > 0) {
+        if(remain_size <= file_size){
+          readRemain(filename, p+1, file_id, p, remain_size, buffer);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+        }else{
+          char* remain_buffer = new char[remain_size];
+          readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
+        }
+      }
+      delete[] buffer;
+      delete[] missed_column;
+    } 
+    else { // case 4: two data column
+      LOG_DEBUG("case 4: disk_%d and disk_%d failed, repair two data columns and read\n", failed[0], failed[1]);
+
+      char* buffer = new char[file_size];
+      char *R = new char[file_size+block_size]; // 缺失的两列的同一行元素异或值；
+      char *D = new char[file_size+block_size]; // 缺失的两列的同一对角线元素异或值；
+      readDataColumn(filename, p, file_id, file_size, R); // 初始化 R[0:p-1] = row_parity
+      readDataColumn(filename, p + 1, file_id, file_size,
+                     D); // 初始化 D[0:p-1] = diagonal_parity
+
+      char* missed_1, *missed_2;
+      repairByRowDiagonalParity(filename, failed, buffer, R, D, p, file_id, file_size, 
+                                &missed_1, &missed_2, true, output_fd, offset);
+
+      // write two data columns to local file
+      bool reset_ptr = true;
+      writeDataColumn(missed_1, failed[0], offset, file_size, output_fd, &reset_ptr);
+      reset_ptr = true;
+      writeDataColumn(missed_2, failed[1], offset, file_size, output_fd, &reset_ptr);
+
+      if (remain_size > 0) {
+        if(remain_size <= file_size){
+          readRemain(filename, p+1, file_id, p, remain_size, buffer);
+          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
+        }else{
+          char* remain_buffer = new char[remain_size];
+          readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
+          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
+          delete[] remain_buffer;
+        }
+      }
+
+      // free space
+      delete[] buffer;
+      delete[] R;
+      delete[] D;
+      delete[] missed_2;
+    }
+  }
+
+  *write_file_offset += file_size * p + remain_size;
+}
+
 /*
  * Please read the file specified by "file_name", and store it as a file
  * named "save_as" in the local file system.
@@ -241,287 +617,4 @@ void read1(char *path, char *save_as) {
     }
   }
   close(output_fd);
-}
-
-
-
-void decode(int p, int failed_num, int* failed, char* filename, char* save_as, 
-  size_t file_size, size_t remain_size, int file_id, int output_fd, size_t* write_file_offset){
-  
-  size_t offset = *write_file_offset;
-  size_t block_size = file_size / (p-1);
-  if (failed_num == 0) {
-    LOG_DEBUG("read directly\n");
-    bool reset_ptr = false;
-
-    char *buffer = new char[file_size];
-    for (int i = 0; i < p; i++) {
-      readDataColumn(filename, i, file_id, file_size, buffer);
-      writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-    }
-    if (remain_size > 0) {
-      if(remain_size <= file_size){
-        readRemain(filename, p-1, file_id, p, remain_size, buffer);
-        writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-      }else{
-        char* remain_buffer = new char[remain_size];
-        readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-        writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-        delete[] remain_buffer;
-      }
-    }
-
-    delete[] buffer;
-  } else if (failed_num == 1) {
-    if (failed[0] == p || failed[0] == p + 1) { // diagonal_parity or row_parity
-      LOG_DEBUG("disk_%d failed, read directly\n", failed[0]);
-      bool reset_ptr = false;
-
-      char *buffer = new char[file_size];
-      for (int i = 0; i < p; i++) {
-        readDataColumn(filename, i, file_id, file_size, buffer);
-        writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-      }
-      if (remain_size > 0) {
-        if(remain_size <= file_size){
-          readRemain(filename, p-1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-        }else{
-          char* remain_buffer = new char[remain_size];
-          readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-          delete[] remain_buffer;
-        }
-      }
-      delete[] buffer;
-    } else { // repair some data column
-      LOG_DEBUG("disk_%d failed, repair and read\n", failed[0]);
-
-      char* buffer = new char[file_size];
-      char* missed_column = new char[file_size];
-      memset(missed_column, 0, file_size);
-
-      bool reset_ptr = false;
-      for (int i = 0; i < p; i++) {
-        if (i != failed[0]) {
-          readDataColumn(filename, i, file_id, file_size, buffer);
-          for (int j = 0; j < p - 1; j++) {
-            block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
-          }
-          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-        } else {
-          reset_ptr = true;
-        }
-      }
-      readDataColumn(filename, p, file_id, file_size, buffer); // read row parity
-      for (int j = 0; j < p - 1; j++) {
-        block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
-      }
-      reset_ptr = true;
-      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
-
-      if (remain_size > 0) {
-        if(remain_size <= file_size){
-          readRemain(filename, p, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-        }else{
-          char* remain_buffer = new char[remain_size];
-          readRemain(filename, p, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-          delete[] remain_buffer;
-        }
-      }
-      delete[] buffer;
-      delete[] missed_column;
-    }
-  } else { // failed_num == 2
-    if (failed[1] == p + 1) {
-      if (failed[0] == p) { // case 1: diagonal_parity and row_parity
-        LOG_DEBUG("case 1: disk_%d and disk_%d failed, read directly\n", failed[0],
-               failed[1]);
-        bool reset_ptr = false;
-        char* buffer = new char[file_size];
-        for (int i = 0; i < p; i++) {
-          readDataColumn(filename, i, file_id, file_size, buffer);
-          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-        }
-        if (remain_size > 0) {
-          if(remain_size <= file_size){
-            readRemain(filename, p-1, file_id, p, remain_size, buffer);
-            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-          }else{
-            char* remain_buffer = new char[remain_size];
-            readRemain(filename, p-1, file_id, p, remain_size, remain_buffer);
-            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-            delete[] remain_buffer;
-          }
-        }
-        delete[] buffer;
-      } else { // case 2: diagonal_parity and data column
-        LOG_DEBUG("case 2: disk_%d and disk_%d failed, repair a data column and "
-               "read\n",
-               failed[0], failed[1]);
-        char* buffer = new char[file_size];
-        char* missed_column = new char[file_size];
-        memset(missed_column, 0, file_size);
-
-        bool reset_ptr = false;
-        for (int i = 0; i < p; i++) {
-          if (i != failed[0]) {
-            readDataColumn(filename, i, file_id, file_size, buffer);
-            for (int j = 0; j < p - 1; j++) {
-              block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
-            }
-            writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-          } else {
-            reset_ptr = true;
-          }
-        }
-        readDataColumn(filename, p, file_id, file_size, buffer); // read row parity
-        for (int j = 0; j < p - 1; j++) {
-          block_xoreq(missed_column + j * block_size, buffer + j * block_size, block_size);
-        }
-        reset_ptr = true;
-        writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
-
-        if (remain_size > 0) {
-          if(remain_size <= file_size){
-            readRemain(filename, p, file_id, p, remain_size, buffer);
-            writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-          }else{
-            char* remain_buffer = new char[remain_size];
-            readRemain(filename, p, file_id, p, remain_size, remain_buffer);
-            writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-            delete[] remain_buffer;
-          }
-        }
-        delete[] buffer;
-        delete[] missed_column;
-      }
-    } else if (failed[1] == p) { // case 3: row parity and data column
-      LOG_DEBUG("case 3: disk_%d and disk_%d failed, repair a data column and read\n", failed[0], failed[1]);
-
-      char* buffer = new char[file_size];
-      char *missed_column = new char[file_size + block_size]; // length = p
-      memset(missed_column, 0, file_size + block_size);
-
-      bool reset_ptr = false;
-      for (int i = 0; i < p; i++) {
-        if (i != failed[0]) {
-          readDataColumn(filename, i, file_id, file_size, buffer);
-          xoreq_diag(missed_column, buffer, failed[0], i, p, block_size);
-          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-        } else {
-          reset_ptr = true;
-        }
-      }
-
-      readDataColumn(filename, p + 1, file_id, file_size, buffer);
-      xoreq_diagparity(missed_column, buffer, failed[0], p, block_size);
-      char *S = missed_column + (p - 1) * block_size;
-      for (int i = 0; i < p - 1; i++) {
-        block_xoreq(missed_column + i * block_size, S, block_size);
-      }
-
-      reset_ptr = true;
-      writeDataColumn(missed_column, failed[0], offset, file_size, output_fd, &reset_ptr);
-      if (remain_size > 0) {
-        if(remain_size <= file_size){
-          readRemain(filename, p+1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-        }else{
-          char* remain_buffer = new char[remain_size];
-          readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-          delete[] remain_buffer;
-        }
-      }
-      delete[] buffer;
-      delete[] missed_column;
-    } else { // case 4: two data column
-      LOG_DEBUG("case 4: disk_%d and disk_%d failed, repair two data columns and read\n", failed[0], failed[1]);
-
-      char* buffer = new char[file_size];
-      char *R = new char[file_size+block_size]; // 缺失的两列的同一行元素异或值；
-      char *D = new char[file_size+block_size]; // 缺失的两列的同一对角线元素异或值；
-      readDataColumn(filename, p, file_id, file_size, R); // 初始化 R[0:p-1] = row_parity
-      readDataColumn(filename, p + 1, file_id, file_size,
-                     D); // 初始化 D[0:p-1] = diagonal_parity
-      memset(R + (p - 1) * block_size, 0, block_size); // R[p-1] = 0
-      char *S = D + (p - 1) * block_size; // 闲置空间拿出来放置 S
-      memset(S, 0, block_size);           // S = 0
-
-      // calculate S
-      for (int k = 0; k < p - 1; k++) {
-        block_xoreq(S, R + k * block_size, block_size);
-        block_xoreq(S, D + k * block_size, block_size);
-      }
-
-      // D[k] ^= S，此时 D[p-1] 就无需与 S 异或
-      for (int k = 0; k < p - 1; k++) {
-        block_xoreq(D + k * block_size, S, block_size);
-      }
-
-      // calculate R and D, and write existing data column
-      bool reset_ptr = false;
-      for (int i = 0; i < p; i++) {
-        if (i == failed[0] || i == failed[1]) {
-          reset_ptr = true;
-        } else {
-          readDataColumn(filename, i, file_id, file_size, buffer);
-          for (int k = 0; k < p - 1; k++) {
-            block_xoreq(R + k * block_size, buffer + k * block_size, block_size);
-          }
-          xoreq_diag(D, buffer, 0, i, p, block_size);
-          writeDataColumn(buffer, i, offset, file_size, output_fd, &reset_ptr);
-        }
-      }
-
-      // calculate the two missed data columns
-      // 按照计算顺序 missed_1 可以复用 R 的空间
-      int m = p - 1 - (failed[1] - failed[0]); //  0 <= m <= p-2
-      char *missed_1 = R;
-      char *missed_2 = new char[file_size];
-
-      do {
-        char *D1 = D + (failed[1] + m) % p * block_size;
-        char *R1 = R + m * block_size;
-        char *cur_1 = missed_1 + m * block_size;
-        char *cur_2 = missed_2 + m * block_size;
-
-        // 第一次进入循环时其实执行 D1 ^ R[p-1] =
-        // missed_2[m]，因此之前需要初始化 R[p-1] = 0
-        block_xor(D1, missed_1 + (m + failed[1] - failed[0]) % p * block_size, cur_2, block_size);
-        block_xor(R1, cur_2, cur_1, block_size);
-        m = (p + m - (failed[1] - failed[0])) %
-            p; // p 为质数则可以保证p次迭代不重不漏地遍历[0, p-1]的每个整数
-      } while (m != p - 1);
-
-      // write two data columns to local file
-      reset_ptr = true;
-      writeDataColumn(missed_1, failed[0], offset, file_size, output_fd, &reset_ptr);
-      reset_ptr = true;
-      writeDataColumn(missed_2, failed[1], offset, file_size, output_fd, &reset_ptr);
-
-      if (remain_size > 0) {
-        if(remain_size <= file_size){
-          readRemain(filename, p+1, file_id, p, remain_size, buffer);
-          writeRemain(buffer, offset+file_size*p, remain_size, output_fd);
-        }else{
-          char* remain_buffer = new char[remain_size];
-          readRemain(filename, p+1, file_id, p, remain_size, remain_buffer);
-          writeRemain(remain_buffer, offset+file_size*p, remain_size, output_fd);
-          delete[] remain_buffer;
-        }
-      }
-
-      // free space
-      delete[] buffer;
-      delete[] R;
-      delete[] D;
-      delete[] missed_2;
-    }
-  }
-
-  *write_file_offset += file_size * p + remain_size;
 }
