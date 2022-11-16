@@ -1,5 +1,7 @@
 #!/bin/bash
+rm -rf build
 mkdir -p build
+cp ./Makefile ./build
 cd build
-cmake ..
 make
+cp evenodd ../
