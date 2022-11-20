@@ -30,6 +30,7 @@ void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
  * caculte the xor value and save to lhs
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
+#pragma omp for
   for (off_t i = 0; i < symbol_size; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
     lhs[i] = lhs[i] ^ rhs[i];
