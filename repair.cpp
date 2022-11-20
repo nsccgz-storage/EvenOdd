@@ -26,7 +26,7 @@ bool parseFileName(const char *filename, char *result) {
 
   if (filename[len - 1] == '0' && filename[len - 2] == '.') {
     memcpy(result, filename, len - 2);
-    result[len - 1] = '\0';
+    result[len - 2] = '\0';
     return true;
   }
   return false;
