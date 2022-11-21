@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <future>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 
 #include "log.h"
 
+#include "omp.h"
 #include "util/ThreadPool.h"
 
 #ifndef PATH_MAX_LEN
@@ -24,23 +26,34 @@
 // #define __USE_THREADPOOL__
 #define THREAD_NUM 12
 
-static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 256UL * 1024 * 1024;
 static State state;
 
+static char *_buffer_pool;
+
+void init() { _buffer_pool = new char[MAX_BUFFER_SIZE * 4]; }
+void destroy() { delete[] _buffer_pool; }
 void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
 /*
  * caculte the xor value and save to lhs
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
-  for (off_t i = 0; i < symbol_size; i++) {
+#pragma omp parallel for num_threads(2)
+  for (off_t i = 0; i < symbol_size / 8; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
-    lhs[i] = lhs[i] ^ rhs[i];
+    ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
+    // lhs[i] = lhs[i] ^ rhs[i];
+  }
+  int last = symbol_size % 8;
+  for (int idx = symbol_size - last; idx < symbol_size; idx++) {
+    lhs[idx] = lhs[idx] ^ rhs[idx];
   }
   state.xor_end();
 }
 
 void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size) {
+#pragma omp parallel for num_threads(2)
   for (off_t i = 0; i < symbol_size; i++) {
     dst[i] = lhs[i] ^ rhs[i];
   }
@@ -117,8 +130,6 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
   return col_fd;
 }
 
-RC bigFileEncode() { return RC::SUCCESS; }
-
 RC partEncode(int fd, off_t offset, off_t encode_size,
               const char *save_filename, int p) {
 
@@ -140,9 +151,12 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   off_t buffer_size = buffer_size_;
 
-  char *buffer = new char[buffer_size + last_size];
-  char *col_buffer = new char[buffer_size];
-  char *diag_buffer = new char[p * symbol_size];
+  // char *buffer = new char[buffer_size + last_size];
+  char *buffer = _buffer_pool;
+  // char *col_buffer = new char[buffer_size];
+  char *col_buffer = _buffer_pool + (buffer_size + last_size);
+  // char *diag_buffer = new char[p * symbol_size];
+  char *diag_buffer = col_buffer + buffer_size;
 
   if (!(buffer && col_buffer && diag_buffer)) {
     LOG_INFO("new buffer fails");
@@ -184,11 +198,11 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
     write_remaining_file(filename, p, p, buffer, last_size);
     write_remaining_file(filename, p, p + 1, buffer, last_size);
   }
-  delete[] buffer;
+  // delete[] buffer;
   buffer = nullptr;
-  delete[] col_buffer;
+  // delete[] col_buffer;
   col_buffer = nullptr;
-  delete[] diag_buffer;
+  // delete[] diag_buffer;
   diag_buffer = nullptr;
 
   return RC::SUCCESS;
@@ -280,6 +294,7 @@ RC thread_partEncode(int fd, off_t offset, off_t encode_size,
  */
 RC encode(const char *path, int p) {
   state.start();
+  init();
 
   RC rc = RC::SUCCESS;
   int fd = open(path, O_RDONLY);
@@ -351,6 +366,8 @@ RC encode(const char *path, int p) {
 
   state.end();
   state.print();
+
+  destroy();
 
   return rc;
 }
