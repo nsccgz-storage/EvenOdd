@@ -2,6 +2,9 @@
 
 rm -rf build
 ./compile.sh
+mkdir build
+mv time_check build/
+mv evenodd build/
 cd build
 
 file_size=104857600

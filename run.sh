@@ -3,6 +3,9 @@
 rm -rf build
 
 ./compile.sh
+mkdir build
+mv time_check build/
+mv evenodd build/
 
 if [ $# != 2 ]; then
     echo "usage: bash correct.sh <file_size> <prime>"
@@ -22,7 +25,7 @@ dd if=/dev/urandom of=./test_data/data bs=$file_size count=1 iflag=fullblock
 
 #测试write模块时间
 ./time_check write ./test_data/data $prime
-rm -rf disk*
+# rm -rf disk*
 
 ## test no filed failed
 echo ====================================

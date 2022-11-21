@@ -671,7 +671,7 @@ void read1(char *path, char *save_as) {
     file_size, remain_size, file_per_disk, last_file_size, last_remain_size);
 
   /* start decoding */
-  int output_fd = open(save_as, O_CREAT | O_WRONLY);
+  int output_fd = open(save_as, O_CREAT | O_WRONLY, S_IRWXU);
   if (output_fd < 0) {
     perror("Error in writing file");
     exit(1);

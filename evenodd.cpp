@@ -2,8 +2,8 @@
 #include "encoding.h"
 #include "log.h"
 #include "repair.h"
-
 #include <stdio.h>
+#include <sys/time.h>
 void usage() {
   printf("./evenodd write <file_name> <p>\n");
   printf("./evenodd read <file_name> <save_as>\n");
@@ -15,6 +15,10 @@ int main(int argc, char **argv) {
     usage();
     return -1;
   }
+
+  // struct timeval start;
+  // struct timeval end;
+  // float time = 0;
 
   char *op = argv[1];
   if (strcmp(op, "write") == 0) {
@@ -43,21 +47,22 @@ int main(int argc, char **argv) {
     read1(argv[2], argv[3]);
 
   } else if (strcmp(op, "repair") == 0) {
-    if(argc < 3){
+    if (argc < 3) {
       usage();
       return -1;
     }
     int num_erasures = atoi(argv[2]);
-    if(num_erasures < 0 || argc != num_erasures + 3){
+    if (num_erasures < 0 || argc != num_erasures + 3) {
       usage();
       return -1;
     }
-    if(num_erasures > 2){
+    if (num_erasures > 2) {
       printf("Too many corruptions!");
       return -1;
     }
     int disks[2];
-    for(int i = 0;i < num_erasures;i++)disks[i] = atoi(argv[i+3]); // assert disk_id is valid number
+    for (int i = 0; i < num_erasures; i++)
+      disks[i] = atoi(argv[i + 3]); // assert disk_id is valid number
 
     repair(num_erasures, disks);
   } else {
