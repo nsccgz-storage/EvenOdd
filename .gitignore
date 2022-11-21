@@ -11,6 +11,8 @@ time_check
 build/
 !/test/*.sh
 !/test/*.py
+!/test/*.c
+!/test/*.cpp
 
 perf图/
 
