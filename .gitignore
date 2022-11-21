@@ -5,6 +5,7 @@ bin/
 _*_
 test/**
 evenodd
+time_check
 .vscode/
 .cache/
 build/
