@@ -25,15 +25,19 @@
 #define THREAD_NUM 12
 
 static off_t MAX_BUFFER_SIZE = 1UL * 1024 * 1024;
+static State state;
+
 void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
 /*
  * caculte the xor value and save to lhs
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
+  state.xor_start();
   for (off_t i = 0; i < symbol_size; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
     lhs[i] = lhs[i] ^ rhs[i];
   }
+  state.xor_end();
 }
 
 void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size) {
@@ -275,6 +279,8 @@ RC thread_partEncode(int fd, off_t offset, off_t encode_size,
  * "disk_6".
  */
 RC encode(const char *path, int p) {
+  state.start();
+
   RC rc = RC::SUCCESS;
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
@@ -342,6 +348,10 @@ RC encode(const char *path, int p) {
     }
   }
   close(fd);
+
+  state.end();
+  state.print();
+
   return rc;
 }
 
@@ -415,6 +425,7 @@ RC basicRead(const char *path, const char *save_as) {
   }
   close(write_fd);
   delete[] buffer;
+
   return RC::SUCCESS;
 }
 
