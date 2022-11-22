@@ -279,7 +279,7 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   // one thread for caculate xor for row_parity and diag_parity
   for (int i = 1; i < p; i++) {
     char *buffer_ = share_buffer.getRead();
-    write_col_file(filename, p, 0, buffer_, symbol_size * (p - 1));
+    write_col_file(filename, p, i, buffer_, symbol_size * (p - 1));
     caculateXor(row_parity, diag_parity, buffer_, symbol_size, p, i);
     share_buffer.popRead();
   }
