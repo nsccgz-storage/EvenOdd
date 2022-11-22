@@ -1,5 +1,4 @@
 #include "decoding.h"
-#include "log.h"
 
 #include <fcntl.h>
 #include <stdio.h>

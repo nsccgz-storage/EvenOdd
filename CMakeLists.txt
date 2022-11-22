@@ -6,26 +6,25 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
 project(EVEN_ODD)
 include_directories(".")
+include_directories("src")
 add_library(evenoddlib "")
 target_sources(evenoddlib
     PRIVATE
-    "util.h"
-    "log.h"
-    "log.cpp"
+    "util/util.h"
+    "util/log.h"
+    "util/log.cpp"
     "util/ThreadPool.h"
 
-    "decoding.h"
-    "decoding.cpp"
-    "encoding.h"
-    "encoding.cpp"
-    "repair.h"
-    "repair.cpp"
-
-    
+    "src/decoding.h"
+    "src/decoding.cpp"
+    "src/encoding.h"
+    "src/encoding.cpp"
+    "src/repair.h"
+    "src/repair.cpp"
 )
 target_link_libraries(evenoddlib "pthread")
-add_executable(evenodd "evenodd.cpp")
+add_executable(evenodd "src/evenodd.cpp")
 target_link_libraries(evenodd evenoddlib)
 
-add_executable(time_check time_check.cpp)
+add_executable(time_check "src/time_check.cpp")
 target_link_libraries(time_check evenoddlib)

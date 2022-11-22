@@ -1,11 +1,11 @@
+#include "decoding.h"
+#include "util/util.h"
 #include <cstdio>
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <vector>
 
-#include "decoding.h"
-#include "log.h"
 #include "repair.h"
 
 int getMinValidDisk(int num_erasures, int *disks) {
