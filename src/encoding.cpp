@@ -14,10 +14,7 @@
 
 #include <vector>
 
-#include "log.h"
-
 #include "omp.h"
-#include "util/ThreadPool.h"
 
 #ifndef PATH_MAX_LEN
 #define PATH_MAX_LEN 512
