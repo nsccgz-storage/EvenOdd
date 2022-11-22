@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <future>
+#include <new>
 #include <pthread.h>
+#include <queue>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +15,7 @@
 #include <sys/types.h>
 
 #include "omp.h"
+#include "util/log.h"
 #include <vector>
 
 #ifndef PATH_MAX_LEN
@@ -22,7 +25,8 @@
 // #define __USE_THREADPOOL__
 #define THREAD_NUM 12
 
-static off_t MAX_BUFFER_SIZE = 256UL * 1024 * 1024;
+// max bandwith = 245MiB/s
+static off_t MAX_BUFFER_SIZE = 240UL * 1024 * 1024;
 static State state;
 
 static char *_buffer_pool;
@@ -135,6 +139,173 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
   }
   close(col_fd);
   return col_fd;
+}
+
+struct ShareBuffer {
+
+  ShareBuffer(size_t _buffer_size, int _num = 2)
+      : buffer_size(_buffer_size), num(_num) {
+    buffers = new char *[_num];
+    for (int i = 0; i < _num; i++) {
+      buffers[i] = new char[_buffer_size];
+      write_q.push(i);
+    }
+    pthread_mutex_init(&w_wq, nullptr);
+    pthread_mutex_init(&w_rq, nullptr);
+  };
+  ~ShareBuffer() {
+    for (int i = 0; i < num; i++) {
+      delete buffers[i];
+    }
+    delete[] buffers;
+    pthread_mutex_destroy(&w_wq);
+    pthread_mutex_destroy(&w_rq);
+  }
+  char *getRead() {
+    while (read_q.empty())
+      ;
+    return buffers[read_q.front()];
+  }
+  void popRead() {
+    if (!read_q.empty()) {
+      pthread_mutex_lock(&w_rq);
+      int idx = read_q.front();
+      read_q.pop();
+      pthread_mutex_unlock(&w_rq);
+
+      pthread_mutex_lock(&w_wq);
+      write_q.push(idx);
+      pthread_mutex_unlock(&w_wq);
+    }
+  }
+  char *getWrite() {
+    while (write_q.empty())
+      ;
+    return buffers[write_q.front()];
+  }
+  void popWrite() {
+    if (!write_q.empty()) {
+      pthread_mutex_lock(&w_wq);
+      int idx = write_q.front();
+      write_q.pop();
+      pthread_mutex_unlock(&w_wq);
+
+      pthread_mutex_lock(&w_rq);
+      read_q.push(idx);
+      pthread_mutex_unlock(&w_rq);
+    }
+  }
+
+private:
+  std::queue<int> write_q;
+  std::queue<int> read_q;
+  pthread_mutex_t w_wq;
+  pthread_mutex_t w_rq;
+
+  size_t buffer_size;
+  char **buffers;
+  int num;
+};
+
+struct T_Args {
+  T_Args(int fd_, off_t offset_, off_t encode_size_, off_t read_size_,
+         off_t buffer_size_, ShareBuffer *share_buffer_)
+      : fd(fd_), offset(offset_), encode_size(encode_size_),
+        read_size(read_size_), buffer_size(buffer_size_),
+        share_buffer(share_buffer_) {}
+  int fd;
+  off_t offset;
+  off_t encode_size;
+  off_t read_size;
+  off_t buffer_size;
+  ShareBuffer *share_buffer;
+};
+
+void *do_read_col(void *args) {
+  T_Args *args_ = (T_Args *)args;
+  int fd = args_->fd;
+  off_t offset = args_->offset;
+  off_t encode_size = args_->encode_size;
+  off_t read_size = args_->read_size;
+  off_t buffer_size = args_->buffer_size;
+  ShareBuffer *share_buffer = args_->share_buffer;
+
+  do {
+    char *buffer_ = share_buffer->getWrite();
+    off_t _size = pread(fd, buffer_, buffer_size, offset);
+    // write to col file
+    share_buffer->popWrite();
+    if (_size != buffer_size) {
+      LOG_DEBUG("read: %lu, buffer_size: %lu", _size, buffer_size);
+      // return nullptr;
+    }
+    read_size += _size;
+  } while (read_size < encode_size);
+  return nullptr;
+}
+
+RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
+                 int p) {
+
+  // encode_size >= 1GiB, use this to optimize
+  size_t symbol_size = encode_size / ((p - 1) * p);
+  size_t last_size = encode_size % ((p - 1) * p);
+
+  off_t buffer_size_ = (p - 1) * symbol_size;
+  off_t buffer_size = buffer_size_;
+
+  char *row_parity = new char[symbol_size * (p - 1)];
+  char *diag_parity = new char[symbol_size * p];
+
+  ShareBuffer share_buffer(symbol_size * (p - 1), 2);
+  size_t read_size = pread(fd, row_parity, symbol_size * (p - 1), offset);
+  offset += read_size;
+
+  write_col_file(filename, p, 0, row_parity, symbol_size * (p - 1));
+
+  memcpy(diag_parity, row_parity, symbol_size * (p - 1));
+  memset(diag_parity + symbol_size * (p - 1), 0, symbol_size);
+
+  // one thread for read and write data
+  pthread_t read_col_thread;
+  T_Args args(fd, offset, encode_size, read_size, symbol_size * (p - 1),
+              &share_buffer);
+  int res =
+      pthread_create(&read_col_thread, NULL, do_read_col, (void *)(&args));
+  if (res < 0) {
+    LOG_ERROR("can't create thread!");
+    exit(-1);
+  }
+  // one thread for caculate xor for row_parity and diag_parity
+  for (int i = 1; i < p; i++) {
+    char *buffer_ = share_buffer.getRead();
+    write_col_file(filename, p, 0, buffer_, symbol_size * (p - 1));
+    caculateXor(row_parity, diag_parity, buffer_, symbol_size, p, i);
+    share_buffer.popRead();
+  }
+  // write row parity
+  int col_fd = write_col_file(filename, p, p, row_parity, buffer_size);
+  // write diag parity file
+  for (int i = 0; i < p - 1; i++) {
+    symbolXor(diag_parity + i * symbol_size,
+              diag_parity + (p - 1) * symbol_size, symbol_size);
+  }
+  col_fd = write_col_file(filename, p, p + 1, diag_parity, buffer_size);
+
+  // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
+  pthread_join(read_col_thread, nullptr);
+  if (last_size > 0) {
+    char *buffer_ = share_buffer.getRead();
+    // write remaining file to the tail of file in disk p-1
+    write_col_file(filename, p, p - 1, buffer_, last_size, true);
+
+    write_remaining_file(filename, p, p, row_parity, last_size);
+    write_remaining_file(filename, p, p + 1, row_parity, last_size);
+  }
+
+  delete[] row_parity;
+  delete[] diag_parity;
+  return RC::SUCCESS;
 }
 
 RC partEncode(int fd, off_t offset, off_t encode_size,
@@ -321,14 +492,17 @@ RC encode(const char *path, int p) {
   size_t file_size = stat_.st_size;
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
-
   int split_num = file_size / (MAX_BUFFER_SIZE * p);
 
 #ifndef __USE_THREADPOOL__
   for (int i = 0; i < split_num; i++) {
     sprintf(save_filename, "%s.%d", filename, i);
-    rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
-                    save_filename, p);
+    if (file_size >= 1UL * 1024 * 1024 * 1024) {
+      rc = bigFileEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+                         save_filename, p);
+    } else
+      rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+                      save_filename, p);
     if (rc != RC::SUCCESS) {
       close(fd);
       LOG_ERROR("error,");
