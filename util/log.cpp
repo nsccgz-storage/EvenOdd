@@ -4,7 +4,7 @@
 
 #define ONE_KILO 1024
 
-static LOG_LEVEL CUR_LEVEL = LOG_LEVEL::LOG_LEVEL_ERR;
+static LOG_LEVEL CUR_LEVEL = LOG_LEVEL::LOG_LEVEL_DEBUG;
 
 int __log_output__(LOG_LEVEL level, const char *file_name, int line,
                    const char *f, ...) {
@@ -15,7 +15,10 @@ int __log_output__(LOG_LEVEL level, const char *file_name, int line,
   va_end(args);
 
   if (LOG_LEVEL::LOG_LEVEL_ERR <= level && level <= CUR_LEVEL) {
-    printf("%s : in file: %s:%d:\n", msg, file_name, line);
+    if (LOG_LEVEL::LOG_LEVEL_INFO == level) {
+      printf("%s\n", msg);
+    } else
+      printf("%s : in file: %s:%d:\n", msg, file_name, line);
   }
   return 0;
 }

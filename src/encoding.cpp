@@ -12,9 +12,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <vector>
-
 #include "omp.h"
+#include <vector>
 
 #ifndef PATH_MAX_LEN
 #define PATH_MAX_LEN 512
@@ -78,7 +77,10 @@ int write_remaining_file(const char *filename, int p, int i, char *buffer,
     perror("Error: can't create file");
     return -1;
   }
+  state.write_start();
   off_t size = write(col_fd, buffer, last_size);
+  state.write_end();
+
   if (size != last_size) {
     perror("Error: remaining, write don't completely");
     // return RC::WRITE_COMPLETE;
@@ -104,7 +106,11 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
     col_fd = open(output_path, O_APPEND | O_WRONLY);
   } else {
     col_fd = open(output_path, O_CREAT | O_WRONLY, S_IRWXU);
+
+    state.write_start();
     off_t size_ = write(col_fd, (void *)(&p), sizeof(p));
+    state.write_end();
+
     if (size_ != sizeof(p)) {
       perror("Error: col, write don't completely");
       // return RC::WRITE_COMPLETE;
@@ -116,7 +122,11 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
     perror("Error: can't create file");
     return -1;
   }
+
+  state.write_start();
   off_t size = write(col_fd, buffer, write_size);
+  state.write_end();
+
   if (size != write_size) {
     perror("Error: col, write don't completely");
     // return RC::WRITE_COMPLETE;
@@ -165,7 +175,9 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   const char *filename = basename(save_filename);
   off_t file_offset = offset;
   for (int i = 0; i < p; i++) {
+    state.read_start();
     int read_size = pread(fd, buffer, buffer_size, file_offset);
+    state.read_end();
     if (read_size != buffer_size) {
       perror("Error: ");
       LOG_INFO("Error: can't read");
@@ -188,7 +200,10 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
 
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
+    state.read_start();
     pread(fd, buffer, last_size, file_offset);
+    state.read_end();
+
     // write remaining file to the tail of file in disk p-1
     write_col_file(filename, p, p - 1, buffer, last_size, true);
 
@@ -390,7 +405,11 @@ RC basicRead(const char *path, const char *save_as) {
   sprintf(output_path, "./disk_%d/%s", 0, filename);
   int fd = open(output_path, O_RDONLY);
   int p = 0;
+
+  state.read_start();
   int read_size_ = read(fd, (void *)(&p), sizeof(p));
+  state.read_end();
+
   if (read_size_ != sizeof(p)) {
     perror("can't read p!");
     return RC::FILE_NOT_EXIST;
@@ -412,7 +431,11 @@ RC basicRead(const char *path, const char *save_as) {
         perror("Error: can't open such file!");
         return RC::FILE_NOT_EXIST;
       }
+
+      state.read_start();
       int read_size_ = read(fd, (void *)(&tmp), sizeof(tmp));
+      state.read_end();
+
       if (read_size_ != sizeof(tmp)) {
         perror("can't read p!");
         return RC::FILE_NOT_EXIST;
@@ -425,11 +448,19 @@ RC basicRead(const char *path, const char *save_as) {
     }
     int read_size = 0;
     do {
+
+      state.read_start();
       read_size = read(fd, buffer, buffer_size);
+      state.read_end();
+
       if (read_size < 0) {
         perror("can't read");
       }
+
+      state.write_start();
       int write_size = write(write_fd, buffer, read_size);
+      state.write_end();
+
       if (write_size < 0) {
         perror("can't write!");
       }
@@ -472,14 +503,21 @@ RC seqXor(const char *path, std::vector<int> &xor_idxs, int p, char *col_buffer,
       return RC::FILE_NOT_EXIST;
     }
     int save_p = 0;
+
+    state.read_start();
     int read_size = read(fd, (void *)(&save_p), sizeof(save_p));
+    state.read_end();
+
     if (read_size != sizeof(save_p)) {
       perror("can't read file");
       return RC::FILE_NOT_EXIST;
     }
     file_offset += read_size;
 
+    state.read_start();
     read_size = read(fd, buffer, buffer_size);
+    state.read_end();
+
     if (read_size != buffer_size) {
       perror("can't read file");
       return RC::FILE_NOT_EXIST;
