@@ -254,6 +254,7 @@ void *do_read_col(void *args) {
       // return nullptr;
     }
     read_size += _size;
+    offset += _size;
   } while (read_size < encode_size);
   return nullptr;
 }
@@ -310,11 +311,14 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   pthread_join(read_col_thread, nullptr);
   if (last_size > 0) {
     char *buffer_ = share_buffer.getRead();
+    if (buffer_ == nullptr) {
+      LOG_ERROR("error!");
+    }
     // write remaining file to the tail of file in disk p-1
     write_col_file(filename, p, p - 1, buffer_, last_size, true);
 
-    write_remaining_file(filename, p, p, row_parity, last_size);
-    write_remaining_file(filename, p, p + 1, row_parity, last_size);
+    write_remaining_file(filename, p, p, buffer_, last_size);
+    write_remaining_file(filename, p, p + 1, buffer_, last_size);
   }
 
   delete[] row_parity;
