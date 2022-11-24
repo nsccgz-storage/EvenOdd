@@ -12,7 +12,10 @@ index_2=0
 prime=$2
 
 #生成测试文件
-cd ../build
+cd ..
+rm -rf build
+./my_compile.sh
+cd build
 rm -rf disk*
 rm -rf test*
 

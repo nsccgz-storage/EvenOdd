@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <future>
+#include <mutex>
 #include <new>
 #include <pthread.h>
 #include <queue>
@@ -32,7 +33,12 @@ static State state;
 static char *_buffer_pool;
 
 void init() { _buffer_pool = new char[MAX_BUFFER_SIZE * 4]; }
-void destroy() { delete[] _buffer_pool; }
+void destroy() {
+  if (_buffer_pool) {
+    delete[] _buffer_pool;
+    _buffer_pool = nullptr;
+  }
+}
 void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
 /*
  * caculte the xor value and save to lhs
@@ -140,9 +146,33 @@ int write_col_file(const char *filename, int p, int i, char *buffer,
   close(col_fd);
   return col_fd;
 }
+class MyQueue {
+public:
+  MyQueue() = default;
+  ~MyQueue() { std::lock_guard<std::mutex> lock(m_mutex); }
+  bool empty() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return q.empty();
+  }
+  void pop() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!q.empty())
+      q.pop();
+  }
+  void push(int x) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    q.push(x);
+  }
+  int front() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return q.front();
+  }
 
+private:
+  std::mutex m_mutex;
+  std::queue<int> q;
+};
 struct ShareBuffer {
-
   ShareBuffer(size_t _buffer_size, int _num = 2)
       : buffer_size(_buffer_size), num(_num) {
     buffers = new char *[_num];
@@ -150,16 +180,12 @@ struct ShareBuffer {
       buffers[i] = new char[_buffer_size];
       write_q.push(i);
     }
-    pthread_mutex_init(&w_wq, nullptr);
-    pthread_mutex_init(&w_rq, nullptr);
   };
   ~ShareBuffer() {
     for (int i = 0; i < num; i++) {
       delete buffers[i];
     }
     delete[] buffers;
-    pthread_mutex_destroy(&w_wq);
-    pthread_mutex_destroy(&w_rq);
   }
   char *getRead() {
     while (read_q.empty())
@@ -168,14 +194,10 @@ struct ShareBuffer {
   }
   void popRead() {
     if (!read_q.empty()) {
-      pthread_mutex_lock(&w_rq);
+
       int idx = read_q.front();
       read_q.pop();
-      pthread_mutex_unlock(&w_rq);
-
-      pthread_mutex_lock(&w_wq);
       write_q.push(idx);
-      pthread_mutex_unlock(&w_wq);
     }
   }
   char *getWrite() {
@@ -185,23 +207,15 @@ struct ShareBuffer {
   }
   void popWrite() {
     if (!write_q.empty()) {
-      pthread_mutex_lock(&w_wq);
       int idx = write_q.front();
       write_q.pop();
-      pthread_mutex_unlock(&w_wq);
-
-      pthread_mutex_lock(&w_rq);
       read_q.push(idx);
-      pthread_mutex_unlock(&w_rq);
     }
   }
 
 private:
-  std::queue<int> write_q;
-  std::queue<int> read_q;
-  pthread_mutex_t w_wq;
-  pthread_mutex_t w_rq;
-
+  MyQueue write_q;
+  MyQueue read_q;
   size_t buffer_size;
   char **buffers;
   int num;
@@ -240,6 +254,7 @@ void *do_read_col(void *args) {
       // return nullptr;
     }
     read_size += _size;
+    offset += _size;
   } while (read_size < encode_size);
   return nullptr;
 }
@@ -296,11 +311,14 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   pthread_join(read_col_thread, nullptr);
   if (last_size > 0) {
     char *buffer_ = share_buffer.getRead();
+    if (buffer_ == nullptr) {
+      LOG_ERROR("error!");
+    }
     // write remaining file to the tail of file in disk p-1
     write_col_file(filename, p, p - 1, buffer_, last_size, true);
 
-    write_remaining_file(filename, p, p, row_parity, last_size);
-    write_remaining_file(filename, p, p + 1, row_parity, last_size);
+    write_remaining_file(filename, p, p, buffer_, last_size);
+    write_remaining_file(filename, p, p + 1, buffer_, last_size);
   }
 
   delete[] row_parity;
@@ -322,10 +340,10 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   off_t last_size = file_size - symbol_size * (p - 1) * p;
 
   off_t buffer_size_ = (p - 1) * symbol_size;
-  if (buffer_size_ > MAX_BUFFER_SIZE) {
-    LOG_ERROR("buffer need: %llu: ", buffer_size_);
-    return RC::BUFFER_OVERFLOW;
-  }
+  // if (buffer_size_ > MAX_BUFFER_SIZE) {
+  //   LOG_ERROR("buffer need: %llu: ", buffer_size_);
+  //   return RC::BUFFER_OVERFLOW;
+  // }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   off_t buffer_size = buffer_size_;
 
@@ -405,10 +423,10 @@ RC thread_partEncode(int fd, off_t offset, off_t encode_size,
   off_t last_size = file_size - symbol_size * (p - 1) * p;
 
   off_t buffer_size_ = (p - 1) * symbol_size;
-  if (buffer_size_ > MAX_BUFFER_SIZE) {
-    LOG_ERROR("buffer need: %llu: ", buffer_size_);
-    return RC::BUFFER_OVERFLOW;
-  }
+  // if (buffer_size_ > MAX_BUFFER_SIZE) {
+  //   LOG_ERROR("buffer need: %llu: ", buffer_size_);
+  //   return RC::BUFFER_OVERFLOW;
+  // }
   // TODO: search the smallest buffer_size % 4K == 0 and >= buffer_size_
   off_t buffer_size = buffer_size_;
 
@@ -492,16 +510,19 @@ RC encode(const char *path, int p) {
   size_t file_size = stat_.st_size;
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
-  int split_num = file_size / (MAX_BUFFER_SIZE * p);
+
+  // col_file_size <~ MAX_BUFFER_SIZE and col_file_size % (p-1) == 0
+  size_t col_file_size = MAX_BUFFER_SIZE - (MAX_BUFFER_SIZE % (p - 1));
+  int split_num = file_size / (col_file_size * p);
 
 #ifndef __USE_THREADPOOL__
   for (int i = 0; i < split_num; i++) {
     sprintf(save_filename, "%s.%d", filename, i);
     if (file_size >= 1UL * 1024 * 1024 * 1024) {
-      rc = bigFileEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+      rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
                          save_filename, p);
     } else
-      rc = partEncode(fd, i * (MAX_BUFFER_SIZE * p), (MAX_BUFFER_SIZE * p),
+      rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
                       save_filename, p);
     if (rc != RC::SUCCESS) {
       close(fd);
@@ -519,8 +540,8 @@ RC encode(const char *path, int p) {
     for (int i = 0; i < split_num; i++) {
       // sprintf(save_filename, "%s.%d", filename, i);
       results.emplace_back(pool.enqueue(thread_partEncode, fd,
-                                        i * (MAX_BUFFER_SIZE * p),
-                                        (MAX_BUFFER_SIZE * p), filename, p, i));
+                                        i * (col_file_size * p),
+                                        (col_file_size * p), filename, p, i));
     }
     for (auto &&result : results) {
       rc = result.get();
@@ -534,13 +555,13 @@ RC encode(const char *path, int p) {
   }
 #endif
 
-  off_t last_part_size = file_size % (MAX_BUFFER_SIZE * p);
+  off_t last_part_size = file_size % (col_file_size * p);
   if (last_part_size != 0) {
     // if (split_num == 0) {
     //   sprintf(save_filename, "%s", filename);
     // } else
     sprintf(save_filename, "%s.%d", filename, split_num);
-    rc = partEncode(fd, split_num * (MAX_BUFFER_SIZE * p), last_part_size,
+    rc = partEncode(fd, split_num * (col_file_size * p), last_part_size,
                     save_filename, p);
     if (rc != RC::SUCCESS) {
       close(fd);
