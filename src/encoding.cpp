@@ -223,16 +223,18 @@ private:
 
 struct T_Args {
   T_Args(int fd_, off_t offset_, off_t encode_size_, off_t read_size_,
-         off_t buffer_size_, ShareBuffer *share_buffer_)
+         off_t buffer_size_, ShareBuffer *share_buffer_, const char* filename_, int p_)
       : fd(fd_), offset(offset_), encode_size(encode_size_),
         read_size(read_size_), buffer_size(buffer_size_),
-        share_buffer(share_buffer_) {}
+        share_buffer(share_buffer_), filename(filename_), p(p_) {}
   int fd;
   off_t offset;
   off_t encode_size;
   off_t read_size;
   off_t buffer_size;
   ShareBuffer *share_buffer;
+  const char* filename;
+  int p;
 };
 
 void *do_read_col(void *args) {
@@ -243,12 +245,18 @@ void *do_read_col(void *args) {
   off_t read_size = args_->read_size;
   off_t buffer_size = args_->buffer_size;
   ShareBuffer *share_buffer = args_->share_buffer;
+  const char* filename = args_->filename;
+  int p = args_ -> p;
 
+  int cnt = 1;
   do {
     char *buffer_ = share_buffer->getWrite();
     off_t _size = pread(fd, buffer_, buffer_size, offset);
     // write to col file
     share_buffer->popWrite();
+    if(cnt >= p) break;
+    write_col_file(filename, p, cnt, buffer_, _size);
+    cnt++;
     if (_size != buffer_size) {
       LOG_DEBUG("read: %lu, buffer_size: %lu", _size, buffer_size);
       // return nullptr;
@@ -284,7 +292,7 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   // one thread for read and write data
   pthread_t read_col_thread;
   T_Args args(fd, offset, encode_size, read_size, symbol_size * (p - 1),
-              &share_buffer);
+              &share_buffer, filename, p);
   int res =
       pthread_create(&read_col_thread, NULL, do_read_col, (void *)(&args));
   if (res < 0) {
@@ -294,7 +302,6 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   // one thread for caculate xor for row_parity and diag_parity
   for (int i = 1; i < p; i++) {
     char *buffer_ = share_buffer.getRead();
-    write_col_file(filename, p, i, buffer_, symbol_size * (p - 1));
     caculateXor(row_parity, diag_parity, buffer_, symbol_size, p, i);
     share_buffer.popRead();
   }
