@@ -17,6 +17,7 @@
 
 #include "omp.h"
 #include "util/log.h"
+#include <sys/mman.h>
 #include <vector>
 
 #ifndef PATH_MAX_LEN
@@ -27,9 +28,9 @@
 #define THREAD_NUM 12
 
 // max bandwith = 245MiB/s
-static off_t MAX_BUFFER_SIZE = 240UL * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 256UL * 1024 * 1024;
 static State state;
-
+static char *_file_p;
 static char *_buffer_pool;
 
 void init() { _buffer_pool = new char[MAX_BUFFER_SIZE * 4]; }
@@ -223,7 +224,8 @@ private:
 
 struct T_Args {
   T_Args(int fd_, off_t offset_, off_t encode_size_, off_t read_size_,
-         off_t buffer_size_, ShareBuffer *share_buffer_, const char* filename_, int p_)
+         off_t buffer_size_, ShareBuffer *share_buffer_, const char *filename_,
+         int p_)
       : fd(fd_), offset(offset_), encode_size(encode_size_),
         read_size(read_size_), buffer_size(buffer_size_),
         share_buffer(share_buffer_), filename(filename_), p(p_) {}
@@ -233,7 +235,7 @@ struct T_Args {
   off_t read_size;
   off_t buffer_size;
   ShareBuffer *share_buffer;
-  const char* filename;
+  const char *filename;
   int p;
 };
 
@@ -245,8 +247,8 @@ void *do_read_col(void *args) {
   off_t read_size = args_->read_size;
   off_t buffer_size = args_->buffer_size;
   ShareBuffer *share_buffer = args_->share_buffer;
-  const char* filename = args_->filename;
-  int p = args_ -> p;
+  const char *filename = args_->filename;
+  int p = args_->p;
 
   int cnt = 1;
   do {
@@ -254,7 +256,8 @@ void *do_read_col(void *args) {
     off_t _size = pread(fd, buffer_, buffer_size, offset);
     // write to col file
     share_buffer->popWrite();
-    if(cnt >= p) break;
+    if (cnt >= p)
+      break;
     write_col_file(filename, p, cnt, buffer_, _size);
     cnt++;
     if (_size != buffer_size) {
@@ -372,17 +375,19 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   off_t file_offset = offset;
   for (int i = 0; i < p; i++) {
     state.read_start();
-    int read_size = pread(fd, buffer, buffer_size, file_offset);
     state.read_end();
-    if (read_size != buffer_size) {
-      perror("Error: ");
-      LOG_INFO("Error: can't read");
-      return RC::WRITE_COMPLETE;
-    }
 
-    file_offset += read_size;
-    int col_fd = write_col_file(filename, p, i, buffer, buffer_size);
-    caculateXor(col_buffer, diag_buffer, buffer, symbol_size, p, i);
+    // int read_size = pread(fd, buffer, buffer_size, file_offset);
+    // state.read_end();
+    // if (read_size != buffer_size) {
+    //   perror("Error: ");
+    //   LOG_INFO("Error: can't read");
+    //   return RC::WRITE_COMPLETE;
+    // }
+    char *_buffer = _file_p + file_offset;
+    file_offset += buffer_size;
+    int col_fd = write_col_file(filename, p, i, _buffer, buffer_size);
+    caculateXor(col_buffer, diag_buffer, _buffer, symbol_size, p, i);
   }
 
   // write row parity
@@ -397,14 +402,16 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
     state.read_start();
-    pread(fd, buffer, last_size, file_offset);
+
+    char *_buffer = _file_p + file_offset;
+    // pread(fd, buffer, last_size, file_offset);
     state.read_end();
 
     // write remaining file to the tail of file in disk p-1
-    write_col_file(filename, p, p - 1, buffer, last_size, true);
+    write_col_file(filename, p, p - 1, _buffer, last_size, true);
 
-    write_remaining_file(filename, p, p, buffer, last_size);
-    write_remaining_file(filename, p, p + 1, buffer, last_size);
+    write_remaining_file(filename, p, p, _buffer, last_size);
+    write_remaining_file(filename, p, p + 1, _buffer, last_size);
   }
   // delete[] buffer;
   buffer = nullptr;
@@ -515,22 +522,32 @@ RC encode(const char *path, int p) {
 
   // file size in bytes
   size_t file_size = stat_.st_size;
+
+  _file_p = (char *)mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if ((void *)(_file_p) == MAP_FAILED) {
+    perror("error");
+    LOG_ERROR("error! can't mmap");
+    return RC::FILE_NOT_EXIST;
+  }
+
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
 
   // col_file_size <~ MAX_BUFFER_SIZE and col_file_size % (p-1) == 0
-  size_t col_file_size = MAX_BUFFER_SIZE - (MAX_BUFFER_SIZE % (p - 1));
+  // size_t col_file_size = MAX_BUFFER_SIZE - (MAX_BUFFER_SIZE % (p - 1));
+  size_t col_file_size = MAX_BUFFER_SIZE;
   int split_num = file_size / (col_file_size * p);
 
 #ifndef __USE_THREADPOOL__
   for (int i = 0; i < split_num; i++) {
     sprintf(save_filename, "%s.%d", filename, i);
-    if (file_size >= 1UL * 1024 * 1024 * 1024) {
-      rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
-                         save_filename, p);
-    } else
-      rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
-                      save_filename, p);
+    // if (file_size >= 1UL * 1024 * 1024 * 1024) {
+    //   rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
+    //                      save_filename, p);
+    // } else
+    rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
+                    save_filename, p);
+
     if (rc != RC::SUCCESS) {
       close(fd);
       LOG_ERROR("error,");
