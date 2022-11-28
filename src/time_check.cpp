@@ -1,5 +1,6 @@
 #include "decoding.h"
 #include "encoding.h"
+#include "repair.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +17,9 @@ int main(int argc, char **argv) {
     usage();
     return -1;
   }
-
+    struct timeval start;
+    struct timeval end;
+    float time = 0;
   char *op = argv[1];
   if (strcmp(op, "write") == 0) {
 
@@ -26,10 +29,7 @@ int main(int argc, char **argv) {
     }
     char *file_path = argv[2];
     int p = atoi(argv[3]);
-    struct timeval start;
-    struct timeval end;
-    float time = 0;
-    float average_time = 0;
+
 
     if(argc == 5){
       size_t size = atoi(argv[4]);
@@ -58,11 +58,6 @@ int main(int argc, char **argv) {
       usage();
       return -1;
     }
-    // myRead(argv[2], argv[3]);
-    struct timeval start;
-    struct timeval end;
-    float time = 0;
-    float average_time = 0;
 
     for (int i = 0; i < 1; i++) {
       gettimeofday(&start, NULL);
@@ -75,14 +70,28 @@ int main(int argc, char **argv) {
     }
 
   } else if (strcmp(op, "repair") == 0) {
-    /*
-     * Please repair failed disks. The number of failures is specified by
-     * "num_erasures", and the index of disks are provided in the command
-     * line parameters.
-     * For example: Suppose "number_erasures" is 2, and the indices of
-     * failed disks are "0" and "1". After the repair operation, the data
-     * splits in folder "disk_0" and "disk_1" should be repaired.
-     */
+    if (argc < 3) {
+      usage();
+      return -1;
+    }
+    int num_erasures = atoi(argv[2]);
+    if (num_erasures < 0 || argc != num_erasures + 3) {
+      usage();
+      return -1;
+    }
+    if (num_erasures > 2) {
+      printf("Too many corruptions!");
+      return -1;
+    }
+    int disks[2];
+    for (int i = 0; i < num_erasures; i++)
+      disks[i] = atoi(argv[i + 3]); // assert disk_id is valid number
+      gettimeofday(&start, NULL);
+      repair(num_erasures, disks);
+      gettimeofday(&end, NULL);
+      time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+      printf("repair数据消耗时间: %f s\n ", time);
+    
 
   } else {
     printf("Non-supported operations!\n");
