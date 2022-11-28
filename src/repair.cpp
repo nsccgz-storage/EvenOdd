@@ -157,7 +157,7 @@ void repairFile(const string &filename, int num, int *disks,
   int failed_num;
   int failed_disks[2];
   setFailedDisk(p, num, disks, &failed_num, failed_disks);
-  printf("filename: %s, p: %d, failed_num: %d, failed = %d, %d", filename.c_str(), p, failed_num, failed_disks[0], failed_disks[1]);
+  // printf("filename: %s, p: %d, failed_num: %d, failed = %d, %d", filename.c_str(), p, failed_num, failed_disks[0], failed_disks[1]);
 
   if(failed_num == 0)return ;
   if (failed_num == 1) {
