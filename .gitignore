@@ -13,7 +13,6 @@ build/
 !/test/*.py
 !/test/*.c
 !/test/*.cpp
-wyn/
 perf图/
-
+wyn/data*
 FlameGraph/
