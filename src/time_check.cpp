@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-
+#include <iostream>
+#include <fstream>
+using namespace std;
 void usage() {
   printf("./evenodd write <file_name> <p>\n");
   printf("./evenodd read <file_name> <save_as>\n");
@@ -17,9 +19,13 @@ int main(int argc, char **argv) {
     usage();
     return -1;
   }
-    struct timeval start;
-    struct timeval end;
-    float time = 0;
+	ofstream write_time;
+  ofstream read_time;
+	write_time.open("../wyn_time/write_time.txt",ios::out | ios::app);
+  read_time.open("../wyn_time/read_time.txt",ios::out | ios::app);
+  struct timeval start;
+  struct timeval end;
+  float time = 0;
   char *op = argv[1];
   if (strcmp(op, "write") == 0) {
 
@@ -41,6 +47,7 @@ int main(int argc, char **argv) {
       RC error_code = encode(file_path, p);
       gettimeofday(&end, NULL);
       time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+      write_time<<time<<std::endl;
       printf("write数据消耗时间: %f s\n ", time);
 
       // average_time += time;
@@ -64,6 +71,7 @@ int main(int argc, char **argv) {
       read1(argv[2], argv[3]);
       gettimeofday(&end, NULL);
       time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+      read_time<<time<<std::endl;
       printf("read数据消耗时间: %f s\n ", time);
 
       // average_time += time;
@@ -96,5 +104,7 @@ int main(int argc, char **argv) {
   } else {
     printf("Non-supported operations!\n");
   }
+  write_time.close();
+  read_time.close();
   return 0;
 }
