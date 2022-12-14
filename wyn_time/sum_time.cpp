@@ -9,7 +9,7 @@ using namespace std;
 int main() {
 
   ifstream ifs;
-  ifs.open("read_time.txt") ;
+  ifs.open("../wyn_time/read_time.txt") ;
   if (!ifs.is_open()) {
     cout << "文件打开失败" << endl;
     return 0;
@@ -23,7 +23,7 @@ int main() {
   }
   ifs.close();
 
-  ifs.open("write_time.txt") ;
+  ifs.open("../wyn_time/write_time.txt") ;
   if (!ifs.is_open()) {
     cout << "文件打开失败" << endl;
     return 0;
@@ -37,8 +37,8 @@ int main() {
   ifs.close();
    double a = 4723/write_time;
    double b = 4723/read_time;
-   cout<<"write time:"<<write_time<<endl;
-   cout<<"read time:"<<read_time<<endl;
+   cout<<"total write time:"<<write_time<<endl;
+   cout<<"total read time:"<<read_time<<endl;
    cout<<"write带宽:"<<a<<"MB/s"<<endl;
    cout<<"read带宽:"<<b<<"MB/s"<<endl;
   return 0;

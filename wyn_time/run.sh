@@ -146,3 +146,7 @@ rm -rf _disk_*
 rm -rf ./temp/data_2GB
 rm -rf ./test_data/data_2GB
 echo ====================================
+g++ ../wyn_time/sum_time.cpp -o ../wyn_time/sum_time
+../wyn_time/sum_time
+rm -rf ../wyn_time/write_time.txt
+rm -rf ../wyn_time/read_time.txt
