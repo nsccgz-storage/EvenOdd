@@ -35,8 +35,8 @@ int main() {
     write_time += time;
   }
   ifs.close();
-   double a = 4723/write_time;
-   double b = 4723/read_time;
+   double a = 8195/write_time;
+   double b = 8195/read_time;
    cout<<"total write time:"<<write_time<<endl;
    cout<<"total read time:"<<read_time<<endl;
    cout<<"write带宽:"<<a<<"MB/s"<<endl;
