@@ -150,15 +150,10 @@ void repairToDisk(const char *filename, char *buffer, size_t size, int disk_id,
   }
 }
 
-void repairFile(const string &filename, int num, int *disks,
+void repairFile(const string &filename, int failed_num, int *failed_disks,
                 int p, int file_id, size_t file_size, size_t remain_size) {
   size_t block_size = file_size / (p - 1);
   
-  int failed_num;
-  int failed_disks[2];
-  setFailedDisk(p, num, disks, &failed_num, failed_disks);
-  // printf("filename: %s, p: %d, failed_num: %d, failed = %d, %d", filename.c_str(), p, failed_num, failed_disks[0], failed_disks[1]);
-
   if(failed_num == 0)return ;
   if (failed_num == 1) {
     if (failed_disks[0] == p) {
@@ -393,8 +388,12 @@ void repair(int num_erasures, int *disks) {
               file_per_disk);
     } while (stat(file_name, &st) == 0);
 
+    int failed_num;
+    int failed_disks[2];
+    setFailedDisk(p, num_erasures, disks, &failed_num, failed_disks);
+
     size_t file_size, remain_size, last_file_size, last_remain_size;
-    getSize(file, p, min_valid_disk, file_per_disk, num_erasures, disks,
+    getSize(file, p, min_valid_disk, file_per_disk, failed_num, failed_disks,
             file_size, remain_size, last_file_size, last_remain_size);
     // printf("file_size = %ld, remain size = %ld, last file size = %ld, last "
     //        "remain size = %ld\n",
@@ -403,9 +402,9 @@ void repair(int num_erasures, int *disks) {
     for (int i = 0; i < file_per_disk; i++) {
       // TODO: last i should last_file_size and last_remain_size
       if (i != file_per_disk - 1)
-        repairFile(file, num_erasures, disks, p, i, file_size, remain_size);
+        repairFile(file, failed_num, failed_disks, p, i, file_size, remain_size);
       else
-        repairFile(file, num_erasures, disks, p, i, last_file_size,
+        repairFile(file, failed_num, failed_disks, p, i, last_file_size,
                    last_remain_size);
     }
   }
