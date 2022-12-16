@@ -4,7 +4,6 @@ bin/
 
 _*_
 test/**
-test_data/
 evenodd
 time_check
 .vscode/
