@@ -1,7 +1,12 @@
 #include "encoding.h"
 
 #include <cstddef>
+#include <fcntl.h>
 #include <future>
+
+#include "omp.h"
+#include "util/log.h"
+#include <aio.h>
 #include <mutex>
 #include <new>
 #include <pthread.h>
@@ -9,15 +14,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
-#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-#include "omp.h"
-#include "util/log.h"
-#include <sys/mman.h>
+#include <unistd.h>
 #include <vector>
 
 #ifndef PATH_MAX_LEN
@@ -218,8 +218,8 @@ struct ShareBuffer {
       read_q.push(idx);
     }
   }
-  void readStart(){
-    for(int i=0;i<num; i++){
+  void readStart() {
+    for (int i = 0; i < num; i++) {
       read_q.push(i);
     }
   }
@@ -263,7 +263,24 @@ void *do_read_col(void *args) {
   int cnt = 1;
   do {
     char *buffer_ = share_buffer->getWrite();
-    off_t _size = pread(fd, buffer_, buffer_size, offset);
+    struct aiocb aio_cbp;
+    aio_cbp.aio_offset = offset;
+    aio_cbp.aio_buf = buffer_;
+    aio_cbp.aio_nbytes = buffer_size;
+    aio_cbp.aio_fildes = fd;
+
+    int ret = aio_read(&aio_cbp);
+    if (ret < 0) {
+      LOG_ERROR("aio read error!");
+      perror("error!");
+      return nullptr;
+    }
+
+    while (aio_error(&aio_cbp) == EINPROGRESS) {
+      LOG_DEBUG("wait for aio read!");
+    }
+    off_t _size = aio_return(&aio_cbp);
+    // off_t _size = pread(fd, buffer_, buffer_size, offset);
     // write to col file
     share_buffer->popWrite();
     if (cnt >= p)
@@ -313,7 +330,7 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   }
   // write row parity
   share_buffer.readStart();
-  for(int i=0; i<p; i++){
+  for (int i = 0; i < p; i++) {
     char *buffer_ = share_buffer.getRead();
     int col_fd = write_col_file(filename, p, i, buffer_, buffer_size);
     share_buffer.popRead();
@@ -607,10 +624,9 @@ RC encode(const char *path, int p) {
   // file size in bytes
   size_t file_size = stat_.st_size;
 
-  if(file_size >= 1UL * 1024 * 1024 * 1024){
-    return bigEncode(path, p);
-  }
-
+  // if (file_size >= 1UL * 1024 * 1024 * 1024) {
+  //   return bigEncode(path, p);
+  // }
 
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
