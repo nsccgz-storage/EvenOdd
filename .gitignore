@@ -18,3 +18,8 @@ test_data/
 perf图/
 
 FlameGraph/
+
+test_data
+correct_data
+wyn_time
+wyn_correct
