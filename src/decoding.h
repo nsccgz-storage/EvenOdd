@@ -70,7 +70,7 @@ void repairByRowDiagonalParity(const char *filename, int *failed, char *buffer,
 
 void decode(int p, int failed_num, int *failed, char *filename, char *save_as,
             size_t file_size, size_t remain_size, int file_id, int output_fd,
-            size_t *write_file_offset);
+            size_t write_file_offset);
 
 void repairMixed(const char *filename, int *failed, char *buffer,
                  char *missed_column, int p, int file_id, size_t file_size);

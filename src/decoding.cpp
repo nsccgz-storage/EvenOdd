@@ -394,9 +394,8 @@ void repairByRowDiagonalParity(const char *filename, int *failed, char *buffer,
 
 void decode(int p, int failed_num, int *failed, char *filename, char *save_as,
             size_t file_size, size_t remain_size, int file_id, int output_fd,
-            size_t *write_file_offset) {
+            size_t offset) {
 
-  size_t offset = *write_file_offset;
   size_t block_size = file_size / (p - 1);
   if (failed_num == 0) {
     LOG_DEBUG("read directly\n");
@@ -598,8 +597,6 @@ void decode(int p, int failed_num, int *failed, char *filename, char *save_as,
       delete[] missed_2;
     }
   }
-
-  *write_file_offset += file_size * p + remain_size;
 }
 
 /*
@@ -743,16 +740,17 @@ void read1(char *path, char *save_as) {
     exit(1);
   }
 
-  size_t write_file_offset = 0;
+  size_t offset = 0;
   for (int file_id = 0; file_id < file_per_disk; file_id++) {
-    lseek(output_fd, write_file_offset, SEEK_SET);
+    lseek(output_fd, offset, SEEK_SET);
     if (file_id != file_per_disk - 1) {
       decode(p, failed_num, failed, filename, save_as, file_size, remain_size,
-             file_id, output_fd, &write_file_offset);
+             file_id, output_fd, offset);
     } else {
       decode(p, failed_num, failed, filename, save_as, last_file_size,
-             last_remain_size, file_id, output_fd, &write_file_offset);
+             last_remain_size, file_id, output_fd, offset);
     }
+    offset += file_size * p + remain_size;
   }
   close(output_fd);
 }
