@@ -62,8 +62,13 @@ void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
 
 void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size) {
 #pragma omp parallel for num_threads(2)
-  for (off_t i = 0; i < symbol_size; i++) {
-    dst[i] = lhs[i] ^ rhs[i];
+  for (off_t i = 0; i < symbol_size / 8; i++) {
+    ((size_t *)(dst))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
+    // lhs[i] = lhs[i] ^ rhs[i];
+  }
+  int last = symbol_size % 8;
+  for (int idx = symbol_size - last; idx < symbol_size; idx++) {
+    dst[idx] = lhs[idx] ^ rhs[idx];
   }
 }
 
@@ -85,7 +90,6 @@ void symbolXorEq_seq(char *lhs, const char *rhs, off_t symbol_size) {
   size t* R = reinterpret_cast<size t *>(rhs);
   
   for (off_t i = 0; i < symbol_size / 8; i++) {
-    
     // ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
     L[i] = L[i] ^ R[i];
   }
