@@ -138,9 +138,14 @@ void readRemain(const char *filename, int disk_id, int file_id, int p,
 }
 
 void block_xor(char *left, char *right, char *result, size_t block_size) {
+  size_t* l = reinterpret_cast<size_t *>(left);
+  size_t* r = reinterpret_cast<size_t *>(right);
+  size_t* d = reinterpret_cast<size_t *>(result);
+
 #pragma omp parallel for num_threads(2)
   for (int i = 0; i < block_size / 8; i++) {
-    ((size_t *)(result))[i] = ((size_t *)(left))[i] ^ ((size_t *)(right))[i];
+    d[i] = l[i] ^ r[i];
+    // ((size_t *)(result))[i] = ((size_t *)(left))[i] ^ ((size_t *)(right))[i];
   }
   int last = block_size % 8;
   for (int idx = block_size - last; idx < block_size; idx++) {
@@ -370,8 +375,7 @@ void repairByRowDiagonalParity(const char *filename, int *failed, char *buffer,
   // 按照计算顺序 missed_1 可以复用 R 的空间
   int m = p - 1 - (failed[1] - failed[0]); //  0 <= m <= p-2
   char *missed_1 = R;
-  char *missed_2 =
-      new char[file_size]; // TODO: need to free space outside this function
+  char *missed_2 = new char[file_size];
 
   do {
     char *D1 = D + (failed[1] + m) % p * block_size;
@@ -379,13 +383,11 @@ void repairByRowDiagonalParity(const char *filename, int *failed, char *buffer,
     char *cur_1 = missed_1 + m * block_size;
     char *cur_2 = missed_2 + m * block_size;
 
-    // 第一次进入循环时其实执行 D1 ^ R[p-1] =
-    // missed_2[m]，因此之前需要初始化 R[p-1] = 0
     block_xor(D1, missed_1 + (m + failed[1] - failed[0]) % p * block_size,
               cur_2, block_size);
     block_xor(R1, cur_2, cur_1, block_size);
-    m = (p + m - (failed[1] - failed[0])) %
-        p; // p 为质数则可以保证p次迭代不重不漏地遍历[0, p-1]的每个整数
+    // p 为质数则可以保证p次迭代不重不漏地遍历[0, p-1]的每个整数
+    m = (p + m - (failed[1] - failed[0])) % p; 
   } while (m != p - 1);
 
   *res1 = missed_1;
@@ -394,9 +396,8 @@ void repairByRowDiagonalParity(const char *filename, int *failed, char *buffer,
 
 void decode(int p, int failed_num, int *failed, char *filename, char *save_as,
             size_t file_size, size_t remain_size, int file_id, int output_fd,
-            size_t *write_file_offset) {
+            size_t offset) {
 
-  size_t offset = *write_file_offset;
   size_t block_size = file_size / (p - 1);
   if (failed_num == 0) {
     LOG_DEBUG("read directly\n");
@@ -598,8 +599,6 @@ void decode(int p, int failed_num, int *failed, char *filename, char *save_as,
       delete[] missed_2;
     }
   }
-
-  *write_file_offset += file_size * p + remain_size;
 }
 
 /*
@@ -743,16 +742,18 @@ void read1(char *path, char *save_as) {
     exit(1);
   }
 
-  size_t write_file_offset = 0;
+  size_t offset = 0;
   for (int file_id = 0; file_id < file_per_disk; file_id++) {
-    lseek(output_fd, write_file_offset, SEEK_SET);
+    lseek(output_fd, offset, SEEK_SET);
     if (file_id != file_per_disk - 1) {
       decode(p, failed_num, failed, filename, save_as, file_size, remain_size,
-             file_id, output_fd, &write_file_offset);
+             file_id, output_fd, offset);
     } else {
       decode(p, failed_num, failed, filename, save_as, last_file_size,
-             last_remain_size, file_id, output_fd, &write_file_offset);
+             last_remain_size, file_id, output_fd, offset);
     }
+    offset += file_size * p + remain_size;
   }
+  // fsync(output_fd);
   close(output_fd);
 }
