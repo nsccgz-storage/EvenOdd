@@ -1,7 +1,6 @@
 #include "decoding.h"
 #include "encoding.h"
 #include "repair.h"
-#include "util/util.h"
 #include <stdio.h>
 #include <sys/time.h>
 void usage() {

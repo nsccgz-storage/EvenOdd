@@ -17,6 +17,7 @@
 
 #include "omp.h"
 #include "util/log.h"
+#include <sys/mman.h>
 #include <vector>
 
 #ifndef PATH_MAX_LEN
@@ -27,9 +28,9 @@
 #define THREAD_NUM 12
 
 // max bandwith = 245MiB/s
-static off_t MAX_BUFFER_SIZE = 240UL * 1024 * 1024;
+static off_t MAX_BUFFER_SIZE = 256UL * 1024 * 1024;
 static State state;
-
+static char *_file_p;
 static char *_buffer_pool;
 
 void init() { _buffer_pool = new char[MAX_BUFFER_SIZE * 4]; }
@@ -45,14 +46,11 @@ void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
-  size_t* l = reinterpret_cast<size_t *>(lhs);
-  const size_t* r = reinterpret_cast<const size_t*>(rhs);
 
 #pragma omp parallel for num_threads(2)
   for (off_t i = 0; i < symbol_size / 8; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
-    // ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
-    l[i] ^= r[i];
+    ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
     // lhs[i] = lhs[i] ^ rhs[i];
   }
   int last = symbol_size % 8;
@@ -64,8 +62,13 @@ void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
 
 void symbolXor(const char *lhs, const char *rhs, char *dst, off_t symbol_size) {
 #pragma omp parallel for num_threads(2)
-  for (off_t i = 0; i < symbol_size; i++) {
-    dst[i] = lhs[i] ^ rhs[i];
+  for (off_t i = 0; i < symbol_size / 8; i++) {
+    ((size_t *)(dst))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
+    // lhs[i] = lhs[i] ^ rhs[i];
+  }
+  int last = symbol_size % 8;
+  for (int idx = symbol_size - last; idx < symbol_size; idx++) {
+    dst[idx] = lhs[idx] ^ rhs[idx];
   }
 }
 
@@ -83,10 +86,9 @@ void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
 // sequential version of `symbolXor`
 void symbolXorEq_seq(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
+
   for (off_t i = 0; i < symbol_size / 8; i++) {
-    // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
     ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
-    // lhs[i] = lhs[i] ^ rhs[i];
   }
   int last = symbol_size % 8;
   for (int idx = symbol_size - last; idx < symbol_size; idx++) {
@@ -96,21 +98,21 @@ void symbolXorEq_seq(char *lhs, const char *rhs, off_t symbol_size) {
 }
 
 void caculateXor2(char *pre_row_parity, char *pre_diag, char *cur_data,
-                 off_t symbol_size, int p, int col_idx) {
+                  off_t symbol_size, int p, int col_idx) {
   for (int i = 0; i < p - 1; i++) {
     int diag_idx = (i + col_idx) % p;
-    #pragma omp parallel sections num_threads(2)
+#pragma omp parallel sections num_threads(2)
     {
-      #pragma omp section
+#pragma omp section
       {
-        symbolXorEq_seq(pre_diag + diag_idx * symbol_size, cur_data + i * symbol_size,
-                symbol_size);
+        symbolXorEq_seq(pre_diag + diag_idx * symbol_size,
+                        cur_data + i * symbol_size, symbol_size);
       }
 
-      #pragma omp section
+#pragma omp section
       {
-        symbolXorEq_seq(pre_row_parity + i * symbol_size, cur_data + i * symbol_size,
-                symbol_size);      
+        symbolXorEq_seq(pre_row_parity + i * symbol_size,
+                        cur_data + i * symbol_size, symbol_size);
       }
     }
   }
@@ -263,16 +265,19 @@ private:
 
 struct T_Args {
   T_Args(int fd_, off_t offset_, off_t encode_size_, off_t read_size_,
-         off_t buffer_size_, ShareBuffer *share_buffer_)
+         off_t buffer_size_, ShareBuffer *share_buffer_, const char *filename_,
+         int p_)
       : fd(fd_), offset(offset_), encode_size(encode_size_),
         read_size(read_size_), buffer_size(buffer_size_),
-        share_buffer(share_buffer_) {}
+        share_buffer(share_buffer_), filename(filename_), p(p_) {}
   int fd;
   off_t offset;
   off_t encode_size;
   off_t read_size;
   off_t buffer_size;
   ShareBuffer *share_buffer;
+  const char *filename;
+  int p;
 };
 
 void *do_read_col(void *args) {
@@ -283,12 +288,19 @@ void *do_read_col(void *args) {
   off_t read_size = args_->read_size;
   off_t buffer_size = args_->buffer_size;
   ShareBuffer *share_buffer = args_->share_buffer;
+  const char *filename = args_->filename;
+  int p = args_->p;
 
+  int cnt = 1;
   do {
     char *buffer_ = share_buffer->getWrite();
     off_t _size = pread(fd, buffer_, buffer_size, offset);
     // write to col file
     share_buffer->popWrite();
+    if (cnt >= p)
+      break;
+    write_col_file(filename, p, cnt, buffer_, _size);
+    cnt++;
     if (_size != buffer_size) {
       LOG_DEBUG("read: %lu, buffer_size: %lu", _size, buffer_size);
       // return nullptr;
@@ -324,7 +336,7 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   // one thread for read and write data
   pthread_t read_col_thread;
   T_Args args(fd, offset, encode_size, read_size, symbol_size * (p - 1),
-              &share_buffer);
+              &share_buffer, filename, p);
   int res =
       pthread_create(&read_col_thread, NULL, do_read_col, (void *)(&args));
   if (res < 0) {
@@ -334,7 +346,6 @@ RC bigFileEncode(int fd, off_t offset, off_t encode_size, const char *filename,
   // one thread for caculate xor for row_parity and diag_parity
   for (int i = 1; i < p; i++) {
     char *buffer_ = share_buffer.getRead();
-    write_col_file(filename, p, i, buffer_, symbol_size * (p - 1));
     caculateXor(row_parity, diag_parity, buffer_, symbol_size, p, i);
     share_buffer.popRead();
   }
@@ -405,17 +416,19 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   off_t file_offset = offset;
   for (int i = 0; i < p; i++) {
     state.read_start();
-    int read_size = pread(fd, buffer, buffer_size, file_offset);
     state.read_end();
-    if (read_size != buffer_size) {
-      perror("Error: ");
-      LOG_INFO("Error: can't read");
-      return RC::WRITE_COMPLETE;
-    }
 
-    file_offset += read_size;
-    int col_fd = write_col_file(filename, p, i, buffer, buffer_size);
-    caculateXor(col_buffer, diag_buffer, buffer, symbol_size, p, i);
+    // int read_size = pread(fd, buffer, buffer_size, file_offset);
+    // state.read_end();
+    // if (read_size != buffer_size) {
+    //   perror("Error: ");
+    //   LOG_INFO("Error: can't read");
+    //   return RC::WRITE_COMPLETE;
+    // }
+    char *_buffer = _file_p + file_offset;
+    file_offset += buffer_size;
+    int col_fd = write_col_file(filename, p, i, _buffer, buffer_size);
+    caculateXor(col_buffer, diag_buffer, _buffer, symbol_size, p, i);
   }
 
   // write row parity
@@ -430,14 +443,16 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   // remaining file, just duplicate it as: filename_remaning in p and p+1 disk.
   if (last_size > 0) {
     state.read_start();
-    pread(fd, buffer, last_size, file_offset);
+
+    char *_buffer = _file_p + file_offset;
+    // pread(fd, buffer, last_size, file_offset);
     state.read_end();
 
     // write remaining file to the tail of file in disk p-1
-    write_col_file(filename, p, p - 1, buffer, last_size, true);
+    write_col_file(filename, p, p - 1, _buffer, last_size, true);
 
-    write_remaining_file(filename, p, p, buffer, last_size);
-    write_remaining_file(filename, p, p + 1, buffer, last_size);
+    write_remaining_file(filename, p, p, _buffer, last_size);
+    write_remaining_file(filename, p, p + 1, _buffer, last_size);
   }
   // delete[] buffer;
   buffer = nullptr;
@@ -449,7 +464,8 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   return RC::SUCCESS;
 }
 
-RC partEncode2(int fd, off_t offset, off_t encode_size, const char *save_filename, int p){
+RC partEncode2(int fd, off_t offset, off_t encode_size,
+               const char *save_filename, int p) {
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
   }
@@ -628,23 +644,36 @@ RC encode(const char *path, int p) {
 
   // file size in bytes
   size_t file_size = stat_.st_size;
+
+  _file_p = (char *)mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+  if ((void *)(_file_p) == MAP_FAILED) {
+    perror("error");
+    LOG_ERROR("error! can't mmap");
+    return RC::FILE_NOT_EXIST;
+  }
+
   const char *filename = basename(path);
   char save_filename[PATH_MAX_LEN];
 
   // col_file_size <~ MAX_BUFFER_SIZE and col_file_size % (p-1) == 0
-  size_t col_file_size = MAX_BUFFER_SIZE - (MAX_BUFFER_SIZE % (p - 1));
+  // size_t col_file_size = MAX_BUFFER_SIZE - (MAX_BUFFER_SIZE % (p - 1));
+  size_t col_file_size = MAX_BUFFER_SIZE;
   int split_num = file_size / (col_file_size * p);
 
 #ifndef __USE_THREADPOOL__
   for (int i = 0; i < split_num; i++) {
     sprintf(save_filename, "%s.%d", filename, i);
-    if (file_size <= 2UL * 1024 * 1024 * 1024){ // < 2GB
-     rc = partEncode2(fd, i * (col_file_size * p), (col_file_size * p), save_filename, p);
+    if (file_size <= 2UL * 1024 * 1024 * 1024) { // < 2GB
+      rc = partEncode2(fd, i * (col_file_size * p), (col_file_size * p),
+                       save_filename, p);
     } else {
-     rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
-                        save_filename, p);    
+      //  rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
+      //                     save_filename, p);
+      rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
+                      save_filename, p);
     }
-    
+
     // if (file_size >= 1UL * 1024 * 1024 * 1024) {
     //   rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
     //                      save_filename, p);
@@ -691,7 +720,7 @@ RC encode(const char *path, int p) {
     // rc = partEncode(fd, split_num * (col_file_size * p), last_part_size,
     //                 save_filename, p);
     rc = partEncode2(fd, split_num * (col_file_size * p), last_part_size,
-                    save_filename, p);
+                     save_filename, p);
     if (rc != RC::SUCCESS) {
       close(fd);
       LOG_ERROR("error: %d", rc);

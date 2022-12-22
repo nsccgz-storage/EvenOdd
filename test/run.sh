@@ -14,9 +14,14 @@ prime=$2
 #生成测试文件
 cd ..
 rm -rf build
-./my_compile.sh
+# ./my_compile.sh
+mkdir build
+./compile.sh
+cp evenodd build/
+cp time_check build/
 cd build
-rm -rf disk*
+
+rm -rf disk_*
 rm -rf test*
 
 mkdir ./test_data
