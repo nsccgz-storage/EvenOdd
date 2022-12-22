@@ -8,3 +8,5 @@ dd if=/dev/urandom of=./correct_data/data_200MB bs=200M count=1 iflag=fullblock
 dd if=/dev/urandom of=./correct_data/data_400MB bs=400M count=1 iflag=fullblock
 #文件大小为600MB
 dd if=/dev/urandom of=./correct_data/data_600MB bs=600M count=1 iflag=fullblock
+#文件大小为3B
+dd if=/dev/urandom of=./correct_data/data_3GB bs=3G count=1 iflag=fullblock
