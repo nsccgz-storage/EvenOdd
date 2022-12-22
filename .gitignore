@@ -14,6 +14,7 @@ build/
 !/test/*.c
 !/test/*.cpp
 test_data/
+correct_data/
 perf图/
 
 FlameGraph/
