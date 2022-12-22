@@ -46,12 +46,11 @@ void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
-  
+
 #pragma omp parallel for num_threads(2)
   for (off_t i = 0; i < symbol_size / 8; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
-    // ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
-    l[i] ^= r[i];
+    ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
     // lhs[i] = lhs[i] ^ rhs[i];
   }
   int last = symbol_size % 8;
@@ -87,12 +86,9 @@ void caculateXor(char *pre_row_parity, char *pre_diag, char *cur_data,
 // sequential version of `symbolXor`
 void symbolXorEq_seq(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
-  size t* L = reinterpret_cast<size t *>(lhs);
-  size t* R = reinterpret_cast<size t *>(rhs);
-  
+
   for (off_t i = 0; i < symbol_size / 8; i++) {
-    // ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
-    L[i] = L[i] ^ R[i];
+    ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
   }
   int last = symbol_size % 8;
   for (int idx = symbol_size - last; idx < symbol_size; idx++) {
@@ -102,21 +98,21 @@ void symbolXorEq_seq(char *lhs, const char *rhs, off_t symbol_size) {
 }
 
 void caculateXor2(char *pre_row_parity, char *pre_diag, char *cur_data,
-                 off_t symbol_size, int p, int col_idx) {
+                  off_t symbol_size, int p, int col_idx) {
   for (int i = 0; i < p - 1; i++) {
     int diag_idx = (i + col_idx) % p;
-    #pragma omp parallel sections num_threads(2)
+#pragma omp parallel sections num_threads(2)
     {
-      #pragma omp section
+#pragma omp section
       {
-        symbolXorEq_seq(pre_diag + diag_idx * symbol_size, cur_data + i * symbol_size,
-                symbol_size);
+        symbolXorEq_seq(pre_diag + diag_idx * symbol_size,
+                        cur_data + i * symbol_size, symbol_size);
       }
 
-      #pragma omp section
+#pragma omp section
       {
-        symbolXorEq_seq(pre_row_parity + i * symbol_size, cur_data + i * symbol_size,
-                symbol_size);      
+        symbolXorEq_seq(pre_row_parity + i * symbol_size,
+                        cur_data + i * symbol_size, symbol_size);
       }
     }
   }
@@ -468,7 +464,8 @@ RC partEncode(int fd, off_t offset, off_t encode_size,
   return RC::SUCCESS;
 }
 
-RC partEncode2(int fd, off_t offset, off_t encode_size, const char *save_filename, int p){
+RC partEncode2(int fd, off_t offset, off_t encode_size,
+               const char *save_filename, int p) {
   if (fd < 0) {
     return RC::FILE_NOT_EXIST;
   }
@@ -667,15 +664,16 @@ RC encode(const char *path, int p) {
 #ifndef __USE_THREADPOOL__
   for (int i = 0; i < split_num; i++) {
     sprintf(save_filename, "%s.%d", filename, i);
-    if (file_size <= 2UL * 1024 * 1024 * 1024){ // < 2GB
-     rc = partEncode2(fd, i * (col_file_size * p), (col_file_size * p), save_filename, p);
-    } else {
-    //  rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
-    //                     save_filename, p);    
-      rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
+    if (file_size <= 2UL * 1024 * 1024 * 1024) { // < 2GB
+      rc = partEncode2(fd, i * (col_file_size * p), (col_file_size * p),
                        save_filename, p);
+    } else {
+      //  rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
+      //                     save_filename, p);
+      rc = partEncode(fd, i * (col_file_size * p), (col_file_size * p),
+                      save_filename, p);
     }
-    
+
     // if (file_size >= 1UL * 1024 * 1024 * 1024) {
     //   rc = bigFileEncode(fd, i * (col_file_size * p), (col_file_size * p),
     //                      save_filename, p);
@@ -722,7 +720,7 @@ RC encode(const char *path, int p) {
     // rc = partEncode(fd, split_num * (col_file_size * p), last_part_size,
     //                 save_filename, p);
     rc = partEncode2(fd, split_num * (col_file_size * p), last_part_size,
-                    save_filename, p);
+                     save_filename, p);
     if (rc != RC::SUCCESS) {
       close(fd);
       LOG_ERROR("error: %d", rc);
