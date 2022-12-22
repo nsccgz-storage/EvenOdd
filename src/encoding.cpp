@@ -45,10 +45,14 @@ void setBufferSize(off_t buffer_size_) { MAX_BUFFER_SIZE = buffer_size_; }
  */
 void symbolXor(char *lhs, const char *rhs, off_t symbol_size) {
   state.xor_start();
+  size_t* l = reinterpret_cast<size_t *>(lhs);
+  const size_t* r = reinterpret_cast<const size_t*>(rhs);
+
 #pragma omp parallel for num_threads(2)
   for (off_t i = 0; i < symbol_size / 8; i++) {
     // printf("xor: %x ^ %x = %x \n", lhs[i], rhs[i], lhs[i] ^ rhs[i]);
-    ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
+    // ((size_t *)(lhs))[i] = ((size_t *)(lhs))[i] ^ ((size_t *)(rhs))[i];
+    l[i] ^= r[i];
     // lhs[i] = lhs[i] ^ rhs[i];
   }
   int last = symbol_size % 8;
