@@ -1,5 +1,5 @@
 CXX = g++
-CFLAGS = -I./src/ -I./ -fopenmp -lpthread
+CFLAGS = -I./src/ -I./ -fopenmp -lpthread -lrt
 VPATH = src:util
 all: evenodd time_check
 evenodd: decoding.o encoding.o repair.o log.o

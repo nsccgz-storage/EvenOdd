@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.10.0)
+project(EVEN_ODD)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 set(CMAKE_CXX_FLAGS "-g")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FILE_OFFSET_BITS=64")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
-project(EVEN_ODD)
+
 include_directories(".")
 include_directories("src")
 add_library(evenoddlib "")
